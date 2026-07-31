@@ -24,6 +24,68 @@ The **Three-Way Match Engine** automates this verification pipeline, applying co
 
 ---
 
+# Document Parser Modes
+
+The backend intentionally supports two document parser implementations using the Strategy + Factory design pattern (`DocumentParser` strategy interface + `ParserFactory`). The active parser strategy is controlled entirely by the `USE_GEMINI` environment variable.
+
+### Mock Mode (Default)
+- **Configuration**: `USE_GEMINI=false` (or omitted)
+- **Active Strategy**: `MockDocumentParser`
+- **Behavior**: Uploaded document files (PDF/Image) are intentionally NOT sent over the network or parsed by external AI services.
+- **Output**: Returns deterministic sample fixture data (`poNumber: "PO-2024-0001"`, `currency: "USD"`, `buyer.name: "Acme Corp"`).
+- **Use Cases**:
+  - Local development without external API dependencies
+  - Fast, deterministic unit and integration test execution
+  - Assignment evaluation offline without requiring a paid AI API key
+- **Key Requirement**: No `GEMINI_API_KEY` required.
+
+### Gemini Mode
+- **Configuration**: `USE_GEMINI=true`
+- **Active Strategy**: `GeminiDocumentParser`
+- **Behavior**: Uploaded documents (PDF, PNG, JPEG) are base64-encoded and sent directly to Google's Gemini 1.5 Flash REST API (`gemini-1.5-flash`).
+- **Output**: Real structured JSON extracted directly from the uploaded document file.
+- **Pipeline Integration**: Extracted structured data is mapped into DDD domain objects (`PurchaseOrder`, `GRN`, `Invoice`), validated, persisted into MongoDB, and processed by the Three-Way Match Engine.
+- **Key Requirement**: Requires a valid `GEMINI_API_KEY`.
+
+---
+
+## Environment Configuration
+
+To switch between parser implementations, configure your `.env` file:
+
+```env
+# -----------------------------------------------------------------------------
+# Mock Mode (Default - No external API dependencies)
+# -----------------------------------------------------------------------------
+USE_GEMINI=false
+
+# -----------------------------------------------------------------------------
+# Gemini Mode (Live AI document extraction)
+# -----------------------------------------------------------------------------
+USE_GEMINI=true
+GEMINI_API_KEY=your_google_gemini_api_key_here
+```
+
+`ParserFactory.createParser()` dynamically inspects `env.USE_GEMINI` at runtime and instantiates the appropriate parser strategy. Changing these environment variables is sufficient to switch parser implementations—**no source code modifications are required**.
+
+---
+
+## Frequently Asked Questions (FAQ)
+
+### Q: Why do I always receive PO-2024-0001 when uploading a document?
+**A**: Because **Mock Mode** (`USE_GEMINI=false`) is currently active. In Mock Mode, `MockDocumentParser` returns a deterministic sample document (`PO-2024-0001`) so the rest of the application pipeline can be tested locally without network calls.
+
+### Q: Why is my uploaded PDF not being parsed by AI?
+**A**: Because `USE_GEMINI` is set to `false` (or omitted) in your `.env` file. Set `USE_GEMINI=true` and provide a valid `GEMINI_API_KEY` to enable live Gemini AI parsing.
+
+### Q: Do I need to modify any code to switch to Gemini parsing?
+**A**: **No.** The application uses the Strategy + Factory pattern (`ParserFactory`). Setting `USE_GEMINI=true` and supplying `GEMINI_API_KEY` in `.env` automatically switches the runtime parser strategy.
+
+### Q: What happens if USE_GEMINI=true but no API key is provided?
+**A**: `GeminiDocumentParser` checks for an API key before making the HTTP request. If `GEMINI_API_KEY` is missing or empty, `GeminiDocumentParser` throws `[GeminiParser Error] GEMINI_API_KEY is not configured.` and the upload request fails with HTTP status `500 Internal Server Error` (or error response envelope).
+
+---
+
 ## Authentication
 
 This project intentionally uses a single static authenticated user because full user management and identity provider setup are outside the core procurement reconciliation assignment scope.
