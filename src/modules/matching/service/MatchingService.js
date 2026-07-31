@@ -1,6 +1,7 @@
 'use strict';
 
 const DocumentAggregator = require('../aggregator/DocumentAggregator');
+const LineItemAggregator = require('../aggregator/LineItemAggregator');
 const RuleEngine = require('../rules/RuleEngine');
 const ResultBuilder = require('../builder/ResultBuilder');
 const MatchResult = require('../../../domain/MatchResult');
@@ -10,20 +11,18 @@ const MatchResult = require('../../../domain/MatchResult');
  *
  * Orchestrates the Three-Way Match Engine workflow:
  *
- *   Load documents  →  Run RuleEngine  →  Build Result  →  Return MatchResult
- *
- * Design notes:
- *  - Constructor injection for DocumentAggregator, RuleEngine, and ResultBuilder.
- *  - Clean separation of concerns.
+ *   Load documents → Run LineItemAggregator → Execute RuleEngine → Pass results to ResultBuilder → Return MatchResult
  */
 class MatchingService {
   /**
    * @param {DocumentAggregator} [documentAggregator]
+   * @param {LineItemAggregator} [lineItemAggregator]
    * @param {RuleEngine} [ruleEngine]
    * @param {ResultBuilder} [resultBuilder]
    */
-  constructor(documentAggregator, ruleEngine, resultBuilder) {
+  constructor(documentAggregator, lineItemAggregator, ruleEngine, resultBuilder) {
     this._documentAggregator = documentAggregator || new DocumentAggregator();
+    this._lineItemAggregator = lineItemAggregator || new LineItemAggregator();
     this._ruleEngine = ruleEngine || new RuleEngine();
     this._resultBuilder = resultBuilder || new ResultBuilder();
   }
@@ -33,9 +32,10 @@ class MatchingService {
    *
    * Workflow:
    *  1. Load documents (PO, GRNs, Invoices) via DocumentAggregator.
-   *  2. Run RuleEngine on aggregated document context.
-   *  3. Build Result using ResultBuilder.
-   *  4. Return MatchResult domain object.
+   *  2. Run LineItemAggregator to group metrics by SKU.
+   *  3. Execute RuleEngine on aggregated document and line items context.
+   *  4. Pass rule results to ResultBuilder.
+   *  5. Return MatchResult domain object.
    *
    * @param {string} poNumber - Purchase Order identifier.
    * @returns {Promise<MatchResult>}
@@ -44,13 +44,21 @@ class MatchingService {
     // ── Step 1: Load documents ─────────────────────────────────────────────
     const context = await this._documentAggregator.aggregate(poNumber);
 
-    // ── Step 2: Run RuleEngine ─────────────────────────────────────────────
-    const ruleResults = await this._ruleEngine.execute(context);
+    // ── Step 2: Run LineItemAggregator ──────────────────────────────────────
+    const lineItems = this._lineItemAggregator.aggregate(context);
 
-    // ── Step 3: Build Result ───────────────────────────────────────────────
-    const matchResult = this._resultBuilder.build(ruleResults, context);
+    const fullContext = {
+      ...context,
+      lineItems,
+    };
 
-    // ── Step 4: Return MatchResult ─────────────────────────────────────────
+    // ── Step 3: Execute RuleEngine ─────────────────────────────────────────
+    const ruleResults = await this._ruleEngine.execute(fullContext);
+
+    // ── Step 4: Pass rule results to ResultBuilder ─────────────────────────
+    const matchResult = this._resultBuilder.build(ruleResults, fullContext);
+
+    // ── Step 5: Return MatchResult ─────────────────────────────────────────
     return matchResult;
   }
 }
