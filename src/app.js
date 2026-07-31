@@ -6,6 +6,7 @@ require('express-async-errors');
 
 const env = require('./config/env');
 const logger = require('./shared/logger');
+const documentRoutes = require('./modules/document/routes/DocumentRoutes');
 
 const app = express();
 
@@ -34,6 +35,9 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/health', (_req, res) => {
   res.status(200).json({ success: true, message: 'Server is running' });
 });
+
+/** Document management routes */
+app.use('/api/v1/documents', documentRoutes);
 
 // ---------------------------------------------------------------------------
 // Global Error Handler

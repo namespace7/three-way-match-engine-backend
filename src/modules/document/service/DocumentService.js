@@ -3,40 +3,28 @@
 const DocumentParser = require('../parser/DocumentParser');
 const DocumentMapper = require('../mapper/DocumentMapper');
 const DocumentValidator = require('../validator/DocumentValidator');
+const PurchaseOrderRepository = require('../../../repositories/PurchaseOrderRepository');
+const GRNRepository = require('../../../repositories/GRNRepository');
+const InvoiceRepository = require('../../../repositories/InvoiceRepository');
 
 /**
  * @class DocumentService
  *
  * Orchestrates the full document upload pipeline:
  *
- *   parse  →  map  →  validate  →  return result
+ *   parse → map → validate → persist using repository → return saved document
  *
- * Dependencies (parser, mapper, validator) are injected through the constructor
- * so that any concrete or mock implementation can be substituted without
- * modifying this class.
- *
- * Design notes (SOLID):
- *  - Single Responsibility : orchestrates the pipeline; delegates every concern
- *                            to a specialised collaborator.
- *  - Open/Closed           : swap parsers, mappers, or validators via injection.
- *  - Liskov Substitution   : any DocumentParser subclass works transparently.
- *  - Interface Segregation : service only calls the interface methods it needs.
- *  - Dependency Inversion  : depends on abstractions (base classes), not concretes.
- *
- * @typedef  {Object} UploadResult
- * @property {boolean}                    success        - True when parse + map + validate all pass.
- * @property {string}                     documentType   - Detected type ('PURCHASE_ORDER' | 'GRN' | 'INVOICE').
- * @property {Record<string, unknown>}    raw            - Parsed output before mapping.
- * @property {Record<string, unknown>}    mapped         - Canonical domain object after mapping.
- * @property {{ valid: boolean, errors: string[] }} validation - Validation result.
+ * Dependencies (parser, mapper, validator, repositories) can be injected through
+ * the constructor for full flexibility and testability.
  */
 class DocumentService {
   /**
-   * @param {DocumentParser}    parser    - Concrete parser implementation.
-   * @param {DocumentMapper}    mapper    - Mapper that converts raw data to domain objects.
-   * @param {DocumentValidator} validator - Validator that enforces business rules.
+   * @param {DocumentParser} parser
+   * @param {DocumentMapper} mapper
+   * @param {DocumentValidator} validator
+   * @param {Object} [repositories={}]
    */
-  constructor(parser, mapper, validator) {
+  constructor(parser, mapper, validator, repositories = {}) {
     if (!(parser instanceof DocumentParser)) {
       throw new TypeError('DocumentService: parser must extend DocumentParser');
     }
@@ -50,25 +38,26 @@ class DocumentService {
     this._parser = parser;
     this._mapper = mapper;
     this._validator = validator;
+    this._repositories = {
+      PURCHASE_ORDER: repositories.purchaseOrder || repositories.PURCHASE_ORDER || new PurchaseOrderRepository(),
+      GRN: repositories.grn || repositories.GRN || new GRNRepository(),
+      INVOICE: repositories.invoice || repositories.INVOICE || new InvoiceRepository(),
+    };
   }
 
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
   /**
-   * Runs the full document processing pipeline for an uploaded file.
+   * Runs the full document processing and persistence pipeline.
    *
    * Steps:
-   *  1. Parse  — extract raw structured data from the file.
-   *  2. Map    — transform raw data into a canonical domain object.
-   *  3. Validate — enforce business rules on the domain object.
-   *
-   * Does NOT persist anything to a database.
+   *  1. Parse     — extract raw structured data from the file.
+   *  2. Map       — transform raw data into a canonical domain object.
+   *  3. Validate  — enforce business rules on the domain object.
+   *  4. Persist   — save to MongoDB via the corresponding repository.
+   *  5. Return    — return the persisted document.
    *
    * @param {string} filePath     - Path to the uploaded file on disk.
    * @param {string} documentType - Expected type ('PURCHASE_ORDER' | 'GRN' | 'INVOICE').
-   * @returns {Promise<UploadResult>}
+   * @returns {Promise<Object>} The saved document.
    */
   async upload(filePath, documentType) {
     // ── Step 1: Parse ────────────────────────────────────────────────────────
@@ -79,25 +68,24 @@ class DocumentService {
 
     // ── Step 3: Validate ─────────────────────────────────────────────────────
     const validation = this._validate(mapped, documentType);
+    if (!validation.valid) {
+      const error = new Error(`Document validation failed: ${validation.errors.join(', ')}`);
+      error.statusCode = 400;
+      error.code = 'DOCUMENT_VALIDATION_ERROR';
+      error.errors = validation.errors;
+      throw error;
+    }
 
-    return {
-      success: validation.valid,
-      documentType,
-      raw,
-      mapped,
-      validation,
-    };
+    // ── Step 4: Persist ──────────────────────────────────────────────────────
+    const savedDocument = await this._persist(mapped, documentType);
+
+    // ── Step 5: Return saved document ───────────────────────────────────────
+    return savedDocument;
   }
-
-  // ---------------------------------------------------------------------------
-  // Private pipeline steps (each independently unit-testable)
-  // ---------------------------------------------------------------------------
 
   /**
    * Delegates file parsing to the injected parser.
    * @private
-   * @param {string} filePath
-   * @returns {Promise<Record<string, unknown>>}
    */
   async _parse(filePath) {
     return this._parser.parse(filePath);
@@ -106,9 +94,6 @@ class DocumentService {
   /**
    * Dispatches to the correct mapper method based on `documentType`.
    * @private
-   * @param {Record<string, unknown>} raw
-   * @param {string} documentType
-   * @returns {Record<string, unknown>}
    */
   _map(raw, documentType) {
     const strategies = {
@@ -118,7 +103,6 @@ class DocumentService {
     };
 
     const strategy = strategies[documentType];
-
     if (!strategy) {
       throw new Error(`DocumentService: unsupported documentType "${documentType}"`);
     }
@@ -129,9 +113,6 @@ class DocumentService {
   /**
    * Dispatches to the correct validator method based on `documentType`.
    * @private
-   * @param {Record<string, unknown>} mapped
-   * @param {string} documentType
-   * @returns {{ valid: boolean, errors: string[] }}
    */
   _validate(mapped, documentType) {
     const strategies = {
@@ -141,12 +122,25 @@ class DocumentService {
     };
 
     const strategy = strategies[documentType];
-
     if (!strategy) {
       throw new Error(`DocumentService: unsupported documentType "${documentType}"`);
     }
 
     return strategy();
+  }
+
+  /**
+   * Saves the domain object data using the appropriate repository.
+   * @private
+   */
+  async _persist(mapped, documentType) {
+    const repo = this._repositories[documentType];
+    if (!repo) {
+      throw new Error(`DocumentService: repository for documentType "${documentType}" not found`);
+    }
+
+    const dataToSave = typeof mapped.toJSON === 'function' ? mapped.toJSON() : mapped;
+    return await repo.create(dataToSave);
   }
 }
 
