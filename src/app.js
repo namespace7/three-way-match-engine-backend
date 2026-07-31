@@ -7,6 +7,7 @@ require('express-async-errors');
 const env = require('./config/env');
 const logger = require('./shared/logger');
 const documentRoutes = require('./modules/document/routes/DocumentRoutes');
+const matchingRoutes = require('./modules/matching/routes/MatchingRoutes');
 
 const app = express();
 
@@ -38,6 +39,9 @@ app.get('/health', (_req, res) => {
 
 /** Document management routes */
 app.use('/api/v1/documents', documentRoutes);
+
+/** Three-way matching routes */
+app.use('/api/v1/match', matchingRoutes);
 
 // ---------------------------------------------------------------------------
 // Global Error Handler
