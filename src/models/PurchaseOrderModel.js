@@ -31,7 +31,7 @@ const purchaseOrderSchema = new mongoose.Schema(
   {
     poNumber:     { type: String, required: true, trim: true },
     issueDate:    { type: Date,   default: null },
-    currency:     { type: String, required: true, trim: true, uppercase: true, default: 'USD' },
+    currency:     { type: String, required: true, trim: true, uppercase: true, default: 'INR' },
     buyer:        { type: partySchema, required: true },
     supplier:     { type: partySchema, required: true },
     lineItems:    { type: [lineItemSchema], required: true },

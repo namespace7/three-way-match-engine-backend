@@ -90,7 +90,7 @@ class PurchaseOrder {
     this._poNumber = Object.freeze(poNumber.trim());
 
     this._issueDate    = issueDate ? new Date(issueDate) : null;
-    this._currency     = (currency ?? 'USD').trim().toUpperCase();
+    this._currency     = (currency ?? 'INR').trim().toUpperCase();
     this._buyer        = Object.freeze({ ...buyer });
     this._supplier     = Object.freeze({ ...supplier });
     this._lineItems    = Object.freeze(lineItems.map((item) => new LineItem(item)));

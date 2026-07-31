@@ -100,7 +100,7 @@ class Invoice {
 
     this._issueDate   = issueDate ? new Date(issueDate) : null;
     this._dueDate     = dueDate   ? new Date(dueDate)   : null;
-    this._currency    = (currency ?? 'USD').trim().toUpperCase();
+    this._currency    = (currency ?? 'INR').trim().toUpperCase();
     this._supplier    = Object.freeze({ ...supplier });
     this._lineItems   = Object.freeze(lineItems.map((item) => new InvoiceLineItem(item)));
     this._subtotal    = subtotal    ?? 0;

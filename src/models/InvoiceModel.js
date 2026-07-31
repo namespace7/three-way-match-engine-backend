@@ -35,7 +35,7 @@ const invoiceSchema = new mongoose.Schema(
     grnReference:  { type: String, default: null,  trim: true },
     issueDate:     { type: Date,   default: null },
     dueDate:       { type: Date,   default: null },
-    currency:      { type: String, required: true, trim: true, uppercase: true, default: 'USD' },
+    currency:      { type: String, required: true, trim: true, uppercase: true, default: 'INR' },
     supplier:      { type: invoiceSupplierSchema, required: true },
     lineItems:     { type: [invoiceLineItemSchema], required: true },
     subtotal:      { type: Number, required: true, min: 0, default: 0 },
