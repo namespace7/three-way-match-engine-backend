@@ -64,22 +64,22 @@ The **Three-Way Match Engine** automates this verification pipeline, applying co
                   ▼                                  │         RuleEngine          │
      ┌─────────────────────────────┐                 │ ┌─────────────────────────┐ │
      │       DocumentMapper        │                 │ │ MissingDocumentRule     │ │
-     └────────────┬────────────────┘                 │ │ QuantityRule            │ │
-                  │                                  │ │ PriceRule               │ │
-                  ▼                                  │ │ ToleranceRule           │ │
-     ┌─────────────────────────────┐                 │ └─────────────────────────┘ │
-     │      DocumentValidator      │                 └──────────────┬──────────────┘
+     └────────────┬────────────────┘                 │ │ DuplicateRule           │ │
+                  │                                  │ │ QuantityRule            │ │
+                  ▼                                  │ │ PriceRule               │ │
+     ┌─────────────────────────────┐                 │ │ ToleranceRule           │ │
+     │      DocumentValidator      │                 │ └─────────────────────────┘ │
+     └────────────┬────────────────┘                 └──────────────┬──────────────┘
+                  │                                                 │
+                  ▼                                                 ▼
+     ┌─────────────────────────────┐                 ┌─────────────────────────────┐
+     │        Repositories         │                 │        ResultBuilder        │
+     │ (PO, GRN, Invoice Repos)    │                 └──────────────┬──────────────┘
      └────────────┬────────────────┘                                │
                   │                                                 ▼
                   ▼                                  ┌─────────────────────────────┐
-     ┌─────────────────────────────┐                 │        ResultBuilder        │
-     │        Repositories         │                 └──────────────┬──────────────┘
-     │ (PO, GRN, Invoice Repos)    │                                │
-     └────────────┬────────────────┘                                ▼
-                  │                                  ┌─────────────────────────────┐
-                  ▼                                  │    MatchResult (Domain)     │
-     ┌─────────────────────────────┐                 └─────────────────────────────┘
-     │           MongoDB           │
+     ┌─────────────────────────────┐                 │    MatchResult (Domain)     │
+     │           MongoDB           │                 └─────────────────────────────┘
      └─────────────────────────────┘
 ```
 
@@ -92,7 +92,7 @@ three-way-match-engine/
 ├── src/
 │   ├── config/
 │   │   ├── env.js                # Single-load frozen environment config & startup validations
-│   │   └── db.js                 # Mongoose connection manager with graceful shutdown
+│   │   └── db.js                 # Mongoose connection manager & auto index synchronization
 │   ├── domain/                   # Pure Domain-Driven Design (DDD) entities & value objects
 │   │   ├── PurchaseOrder.js      # PO Aggregate Root with frozen identity
 │   │   ├── GRN.js                # GRN Aggregate Root & GRNLineItem value objects
@@ -100,9 +100,9 @@ three-way-match-engine/
 │   │   ├── SKU.js                # SKU Entity with price tolerance band logic
 │   │   └── MatchResult.js        # MatchResult Aggregate Root & MatchStatus constants
 │   ├── models/                   # Persistence-only Mongoose schemas and indexes
-│   │   ├── PurchaseOrderModel.js # PO collection schema & indexes
-│   │   ├── GRNModel.js           # GRN collection schema & compound indexes
-│   │   ├── InvoiceModel.js       # Invoice collection schema & indexes
+│   │   ├── PurchaseOrderModel.js # PO collection schema & non-unique indexes
+│   │   ├── GRNModel.js           # GRN collection schema & non-unique indexes
+│   │   ├── InvoiceModel.js       # Invoice collection schema & non-unique indexes
 │   │   ├── SKUModel.js           # SKU collection schema with unique & sparse indexes
 │   │   └── AuditModel.js         # Immutable append-only audit trail schema
 │   ├── repositories/             # Data access layer (lean CRUD operations)
@@ -112,30 +112,80 @@ three-way-match-engine/
 │   │   ├── SKURepository.js
 │   │   └── AuditRepository.js
 │   ├── modules/
+│   │   ├── auth/                 # Authentication module (POST /auth/login)
 │   │   ├── document/             # Document ingestion module
-│   │   │   ├── controller/       # DocumentController (multipart HTTP handler)
-│   │   │   ├── mapper/           # DocumentMapper (raw parser output → canonical domain)
-│   │   │   ├── parser/           # DocumentParser abstract base, Mock, Gemini, & ParserFactory
-│   │   │   ├── routes/           # DocumentRoutes (POST /api/v1/documents/upload)
-│   │   │   ├── service/          # DocumentService (parse → map → validate → persist)
-│   │   │   └── validator/        # DocumentValidator (domain business validation)
-│   │   └── matching/             # Core Reconciliation Engine
-│   │       ├── aggregator/       # DocumentAggregator & LineItemAggregator
-│   │       ├── builder/          # ResultBuilder
-│   │       ├── controller/       # MatchingController (GET /api/v1/match/:poNumber)
-│   │       ├── routes/           # MatchingRoutes
-│   │       ├── rules/            # MissingDocumentRule, QuantityRule, PriceRule, ToleranceRule, RuleEngine
-│   │       └── service/          # MatchingService orchestrator
+│   │   ├── matching/             # Core Reconciliation Engine
+│   │   ├── sku/                  # SKU Master CRUD & SKUResolver
+│   │   └── summary/              # Summary Dashboard module
 │   └── shared/
-│       └── logger.js             # Singleton Winston console logger with timestamp & colorization
-├── tests/
-│   ├── integration/              # Pipeline and API integration test suites
-│   └── unit/                     # Standalone rule, domain, and parser unit tests
-├── .env.example                  # Environment configuration template
+│       └── logger.js             # Singleton Winston console logger
+├── tests/                        # Unit and integration test suites
+├── postman/                      # Postman v2.1 importable API collection
+├── bruno/                        # Bruno importable API collection
+├── .env.example
 ├── package.json
 ├── README.md
-└── src/server.js                 # Production server bootstrap entry point
+└── src/server.js                 # Production server entry point
 ```
+
+---
+
+## Supported Document Types
+
+The document upload endpoint `POST /api/v1/documents/upload` enforces strict MIME type validation at the upload boundary.
+
+### Allowed MIME Types:
+- `application/pdf` (`.pdf`)
+- `image/png` (`.png`)
+- `image/jpeg` (`.jpg`, `.jpeg`)
+
+### Rejection Policy:
+Any file upload with an unapproved MIME type (such as executable files `.exe`, `.sh`, `.bat`, `.zip`, `.html`, etc.) is rejected **before** parsing, mapping, validation, or persistence operations take place.
+
+- **HTTP Status Code**: `415 Unsupported Media Type`
+- **Error Response Envelope**:
+```json
+{
+  "success": false,
+  "errors": [
+    {
+      "code": "UNSUPPORTED_FILE_TYPE",
+      "message": "Only PDF, PNG and JPEG files are supported."
+    }
+  ]
+}
+```
+
+---
+
+## MongoDB Index Migration
+
+### Why Mongoose Schema Changes Alone Do Not Remove MongoDB Indexes
+In Mongoose, calling `schema.index()` configures index options used during initial collection creation via MongoDB's `createIndexes()` command.
+
+However, **MongoDB's `createIndexes()` API never drops or modifies existing indexes** in a live database collection. If a collection was created with `idx_po_number`, `idx_grn_number`, or `idx_invoice_number` having `{ unique: true }`, simply removing `{ unique: true }` from JavaScript model files will **not** alter the index in the running MongoDB database. MongoDB will continue enforcing unique constraints, causing duplicate upload requests to fail with `MongoServerError: E11000 duplicate key error`.
+
+### Automatic Application Startup Migration
+To solve this seamlessly, `src/config/db.js` runs `Model.syncIndexes()` automatically upon application startup. `syncIndexes()` compares current Mongoose schema definitions against live MongoDB indexes, automatically dropping any legacy unique indexes that no longer match the schema.
+
+### Manual DBA Migration Script (`mongosh`)
+If manual migration is preferred or if auto-indexing is disabled in production environments, connect to MongoDB via `mongosh` and execute:
+
+```javascript
+use three_way_match_db
+
+// 1. Drop legacy unique indexes on document collections
+db.purchase_orders.dropIndex("idx_po_number")
+db.grns.dropIndex("idx_grn_number")
+db.invoices.dropIndex("idx_invoice_number")
+
+// 2. Re-create non-unique indexes for fast lookup without unique constraints
+db.purchase_orders.createIndex({ poNumber: 1 }, { name: "idx_po_number" })
+db.grns.createIndex({ grnNumber: 1 }, { name: "idx_grn_number" })
+db.invoices.createIndex({ invoiceNumber: 1 }, { name: "idx_invoice_number" })
+```
+
+Once dropped, duplicate uploads are persisted cleanly in MongoDB while `DuplicateRule` in the `RuleEngine` detects duplicate documents during matching and surfaces `DUPLICATE_PO`, `DUPLICATE_GRN`, or `DUPLICATE_INVOICE` reason codes.
 
 ---
 
@@ -145,9 +195,9 @@ When a user calls `GET /api/v1/match/:poNumber`:
 
 1. **HTTP Validation (`MatchingController`)**: Validates the `poNumber` parameter. Returns `404 PO_NOT_FOUND` if the PO does not exist.
 2. **Document Aggregation (`DocumentAggregator`)**: Queries MongoDB repositories in parallel to fetch the `PurchaseOrder`, all associated `GRNs`, and `Invoices`.
-3. **Line Item Aggregation (`LineItemAggregator`)**: Merges line items by SKU code across multiple GRNs and Invoices, calculating total `orderedQuantity`, `receivedQuantity`, `invoicedQuantity`, `orderedPrice`, and `invoicePrice`.
-4. **Rule Engine Execution (`RuleEngine`)**: Runs all registered business rules sequentially, collecting all results without short-circuiting.
-5. **Result Building (`ResultBuilder`)**: Evaluates all rule outcomes, assigns the final status (`MATCHED` or `MISMATCHED`), populates descriptive reason strings, and returns an immutable `MatchResult` domain object.
+3. **Line Item Aggregation (`LineItemAggregator`)**: Merges line items by SKU code across multiple GRNs and Invoices using `SKUResolver`, calculating total `orderedQuantity`, `receivedQuantity`, `invoicedQuantity`, `orderedPrice`, and `invoicePrice`.
+4. **Rule Engine Execution (`RuleEngine`)**: Runs all registered business rules sequentially (`MissingDocumentRule`, `DuplicateRule`, `QuantityRule`, `PriceRule`, `ToleranceRule`), collecting all results without short-circuiting.
+5. **Result Building (`ResultBuilder`)**: Evaluates all rule outcomes, assigns final status (`MATCHED` or `MISMATCHED`), populates descriptive reason strings, warnings, and item-level results, returning an immutable `MatchResult` domain object.
 
 ---
 
@@ -156,6 +206,7 @@ When a user calls `GET /api/v1/match/:poNumber`:
 | Rule | Class | Description | Failure Code | Severity |
 |---|---|---|---|---|
 | **Missing Document** | `MissingDocumentRule` | Verifies that PO, GRNs, and Invoices all exist for the given PO reference. | `PO_NOT_FOUND`<br>`GRN_NOT_FOUND`<br>`INVOICE_NOT_FOUND` | `ERROR` |
+| **Duplicate Document** | `DuplicateRule` | Detects duplicate POs, GRNs, or Invoices uploaded for the same reference. | `DUPLICATE_PO`<br>`DUPLICATE_GRN`<br>`DUPLICATE_INVOICE` | `WARNING` |
 | **Quantity Match** | `QuantityRule` | Ensures `orderedQuantity == receivedQuantity` and `receivedQuantity == invoicedQuantity` per SKU. | `QUANTITY_MISMATCH` | `ERROR` |
 | **Price Match** | `PriceRule` | Ensures exact equality between `orderedPrice` and `invoicePrice` per SKU. | `PRICE_MISMATCH` | `ERROR` |
 | **Price Tolerance** | `ToleranceRule` | Verifies that percentage unit price variation `(abs(invoicePrice - orderedPrice) / orderedPrice * 100)` is within allowed tolerance (default 2%). | `PRICE_TOLERANCE_EXCEEDED` | `WARNING` |
@@ -164,110 +215,26 @@ When a user calls `GET /api/v1/match/:poNumber`:
 
 ## API Endpoints
 
-### 1. Upload Document
-Uploads a PDF or image file (Purchase Order, GRN, or Invoice).
+### 1. Authentication (`POST /auth/login`)
+- **Endpoint**: `POST /auth/login`
+- **Body**: `{}`
+- **Response**: `{ "success": true, "data": { "token": "static-bearer-token-3way-match-engine", "type": "Bearer" } }`
 
-- **Endpoint**: `POST /api/v1/documents/upload`
+### 2. Upload Document (`POST /api/v1/documents/upload`)
+- **Headers**: `Authorization: Bearer <TOKEN>`
 - **Content-Type**: `multipart/form-data`
-- **Form Fields**:
-  - `file`: Document file (PDF, PNG, JPG, WEBP)
-  - `documentType`: `PURCHASE_ORDER` | `GRN` | `INVOICE`
+- **Form Fields**: `file` (PDF/PNG/JPEG), `documentType` (`PURCHASE_ORDER` | `GRN` | `INVOICE`)
 
-#### cURL Example
-```bash
-curl -X POST http://localhost:5000/api/v1/documents/upload \
-  -F "file=@/path/to/purchase_order.pdf" \
-  -F "documentType=PURCHASE_ORDER"
-```
+### 3. List Documents (`GET /api/v1/documents`)
+- **Headers**: `Authorization: Bearer <TOKEN>`
+- **Query Params**: `documentType` (optional), `poNumber` (optional)
 
-#### Success Response (`201 Created`)
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "66ab8e9f1a2b3c4d5e6f7a8b",
-    "poNumber": "PO-2024-0001",
-    "issueDate": "2024-01-15T00:00:00.000Z",
-    "currency": "USD",
-    "buyer": {
-      "name": "Acme Corp",
-      "address": "123 Buyer Street, New York, NY 10001",
-      "taxId": "US-TAX-123456"
-    },
-    "supplier": {
-      "name": "Global Supplies Ltd",
-      "address": "456 Supplier Ave, Los Angeles, CA 90001",
-      "taxId": "US-TAX-654321"
-    },
-    "lineItems": [
-      {
-        "lineNumber": 1,
-        "sku": "SKU-WIDGET-001",
-        "description": "Blue Widget",
-        "quantity": 100,
-        "unitPrice": 9.99,
-        "totalPrice": 999.0
-      }
-    ],
-    "totalAmount": 999.0,
-    "paymentTerms": "Net 30",
-    "createdAt": "2026-07-31T12:00:00.000Z",
-    "updatedAt": "2026-07-31T12:00:00.000Z"
-  }
-}
-```
-
----
-
-### 2. Execute Three-Way Match
-Performs three-way reconciliation for a given Purchase Order number.
-
-- **Endpoint**: `GET /api/v1/match/:poNumber`
-
-#### cURL Example
-```bash
-curl -X GET http://localhost:5000/api/v1/match/PO-2024-0001
-```
-
-#### Success Response (`200 OK` — Perfect Match)
-```json
-{
-  "success": true,
-  "data": {
-    "poNumber": "PO-2024-0001",
-    "grnNumber": "GRN-2024-0001",
-    "invoiceNumber": "INV-2024-0001",
-    "status": "MATCHED",
-    "reasons": [
-      "All three-way reconciliation rules passed successfully"
-    ],
-    "reasonCount": 1,
-    "isMatched": true,
-    "isResolved": false,
-    "createdAt": "2026-07-31T12:00:00.000Z",
-    "resolvedAt": null
-  }
-}
-```
-
-#### Error Response (`404 Not Found` — PO Missing)
-```json
-{
-  "success": false,
-  "errors": [
-    {
-      "code": "PO_NOT_FOUND",
-      "message": "Purchase Order \"PO-9999-MISSING\" not found"
-    }
-  ]
-}
-```
+### 4. Execute Three-Way Match (`GET /api/v1/match/:poNumber`)
+- **Headers**: `Authorization: Bearer <TOKEN>`
 
 ---
 
 ## Environment Variables
-
-Configure environment variables in `.env` (refer to `.env.example`):
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -283,59 +250,16 @@ Configure environment variables in `.env` (refer to `.env.example`):
 
 ## Running Locally
 
-### Prerequisites
-- **Node.js**: `v22.x` or higher
-- **MongoDB**: Local instance running on `mongodb://localhost:27017` or MongoDB Atlas URI
-
-### Installation & Startup
-
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Copy environment template and configure values
+# 2. Configure environment variables
 cp .env.example .env
 
-# 3. Start development server with nodemon
+# 3. Start development server
 npm run dev
 
 # 4. Run test suites
 npm test
 ```
-
----
-
-## Example Matching Result
-
-### Mismatched Scenario Example (`200 OK`)
-When quantity or price discrepancies are detected:
-
-```json
-{
-  "success": true,
-  "data": {
-    "poNumber": "PO-2024-0002",
-    "grnNumber": "GRN-2024-0002",
-    "invoiceNumber": "INV-2024-0002",
-    "status": "MISMATCHED",
-    "reasons": [
-      "[QUANTITY_MISMATCH] Quantity mismatch for SKU SKU-WIDGET-001: ordered 100, received 90, invoiced 90",
-      "[PRICE_TOLERANCE_EXCEEDED] Price tolerance exceeded for SKU SKU-GADGET-002: difference is 5% (allowed 2%)"
-    ],
-    "reasonCount": 2,
-    "isMatched": false,
-    "isResolved": false,
-    "createdAt": "2026-07-31T12:00:00.000Z",
-    "resolvedAt": null
-  }
-}
-```
-
----
-
-## Future Improvements
-
-1. **Vendor SKU Cross-Referencing & Resolution**: Implement alias mapping to resolve vendor-specific part numbers to canonical internal SKU codes.
-2. **Duplicate Document Detection**: Add rules to check for duplicate invoice submissions across different PO references.
-3. **Asynchronous Queue Processing**: Offload heavy document parsing and OCR tasks to background worker queues (e.g. BullMQ with Redis).
-4. **OCR Confidence Scoring & Manual Exception Queue**: Surface low-confidence field extractions for human-in-the-loop review before reconciliation execution.

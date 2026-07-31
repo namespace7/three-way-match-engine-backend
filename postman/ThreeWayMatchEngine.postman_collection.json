@@ -1,0 +1,721 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+		"name": "Three-Way Match Engine API",
+		"description": "Comprehensive Postman v2.1 Collection for Three-Way Match Engine backend containing requests for Auth, Health, Documents, Summary, Matching, and SKU Master CRUD.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "BASE_URL",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "TOKEN",
+			"value": "static-bearer-token-3way-match-engine",
+			"type": "string"
+		},
+		{
+			"key": "PO_NUMBER",
+			"value": "PO-2024-0001",
+			"type": "string"
+		},
+		{
+			"key": "DOCUMENT_ID",
+			"value": "66ab8e9f1a2b3c4d5e6f7a8b",
+			"type": "string"
+		},
+		{
+			"key": "SKU_ID",
+			"value": "SKU-WIDGET-001",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Auth - Login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Token returned and saved to variable', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.data).to.have.property('token');",
+							"    pm.collectionVariables.set('TOKEN', jsonData.data.token);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/auth/login",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"auth",
+						"login"
+					]
+				},
+				"description": "Authenticates and automatically sets the returned Bearer token into the TOKEN variable."
+			},
+			"response": []
+		},
+		{
+			"name": "Health Check",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Response success is true', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.message).to.equal('Server is running');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/health",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Lightweight server liveness probe."
+			},
+			"response": []
+		},
+		{
+			"name": "Documents - Upload Document (Valid PDF)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 201 Created', function () {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"",
+							"pm.test('Upload contract verification', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.data).to.have.property('_id');",
+							"    if (jsonData.data._id) {",
+							"        pm.collectionVariables.set('DOCUMENT_ID', jsonData.data._id);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": "valid_po.pdf"
+						},
+						{
+							"key": "documentType",
+							"value": "PURCHASE_ORDER",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/documents/upload",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"documents",
+						"upload"
+					]
+				},
+				"description": "Uploads a Purchase Order document PDF/image file."
+			},
+			"response": []
+		},
+		{
+			"name": "Documents - Upload Document (Executable File Rejection - Invoice.exe)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 415 Unsupported Media Type', function () {",
+							"    pm.response.to.have.status(415);",
+							"});",
+							"",
+							"pm.test('Unsupported MIME type error contract verification', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.false;",
+							"    pm.expect(jsonData.errors[0].code).to.equal('UNSUPPORTED_FILE_TYPE');",
+							"    pm.expect(jsonData.errors[0].message).to.equal('Only PDF, PNG and JPEG files are supported.');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": "Invoice.exe"
+						},
+						{
+							"key": "documentType",
+							"value": "INVOICE",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/documents/upload",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"documents",
+						"upload"
+					]
+				},
+				"description": "Attempts uploading an executable file (Invoice.exe). Expected HTTP 415 Unsupported Media Type."
+			},
+			"response": []
+		},
+		{
+			"name": "Documents - List Documents",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Documents list verification', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.data).to.be.an('array');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/documents?documentType=PURCHASE_ORDER&poNumber={{PO_NUMBER}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"documents"
+					],
+					"query": [
+						{
+							"key": "documentType",
+							"value": "PURCHASE_ORDER"
+						},
+						{
+							"key": "poNumber",
+							"value": "{{PO_NUMBER}}"
+						}
+					]
+				},
+				"description": "Lists documents with optional query filtering by documentType and poNumber."
+			},
+			"response": []
+		},
+		{
+			"name": "Documents - Get Document By ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/documents/{{DOCUMENT_ID}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"documents",
+						"{{DOCUMENT_ID}}"
+					]
+				},
+				"description": "Retrieves a single persisted document by its MongoDB ObjectId."
+			},
+			"response": []
+		},
+		{
+			"name": "Documents - Stream Document File",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/documents/{{DOCUMENT_ID}}/file",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"documents",
+						"{{DOCUMENT_ID}}",
+						"file"
+					]
+				},
+				"description": "Streams the original uploaded PDF or image file from disk."
+			},
+			"response": []
+		},
+		{
+			"name": "Summary - Get PO Summary Dashboard",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});",
+							"",
+							"if (pm.response.code === 200) {",
+							"    pm.test('Summary verification', function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData.success).to.be.true;",
+							"        pm.expect(jsonData.data).to.have.property('poAmount');",
+							"        pm.expect(jsonData.data).to.have.property('linkedPO');",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/summary/{{PO_NUMBER}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"summary",
+						"{{PO_NUMBER}}"
+					]
+				},
+				"description": "Returns PO summary dashboard data matching the Summary tab contract."
+			},
+			"response": []
+		},
+		{
+			"name": "Matching - Execute Three-Way Match",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});",
+							"",
+							"if (pm.response.code === 200) {",
+							"    pm.test('Match response verification', function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData.success).to.be.true;",
+							"        pm.expect(jsonData.data).to.have.property('status');",
+							"        pm.expect(jsonData.data.reasons).to.be.an('array');",
+							"        pm.expect(jsonData.data).to.have.property('linkedDocuments');",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/match/{{PO_NUMBER}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"match",
+						"{{PO_NUMBER}}"
+					]
+				},
+				"description": "Executes three-way reconciliation matching for a given PO number."
+			},
+			"response": []
+		},
+		{
+			"name": "SKU Master - Create SKU",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 201 Created', function () {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"",
+							"pm.test('SKU creation verification', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.data).to.have.property('skuCode');",
+							"    if (jsonData.data._id) {",
+							"        pm.collectionVariables.set('SKU_ID', jsonData.data._id);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"skuCode\": \"SKU-DEMO-001\",\n  \"name\": \"Demo Widget\",\n  \"description\": \"Standard Demo Component\",\n  \"category\": \"Electronics\",\n  \"unitPrice\": 25.00,\n  \"tolerancePercentage\": 2.0,\n  \"isActive\": true\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/skus",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"skus"
+					]
+				},
+				"description": "Creates a new SKU entry in master catalogue."
+			},
+			"response": []
+		},
+		{
+			"name": "SKU Master - List SKUs",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('SKU list verification', function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"    pm.expect(jsonData.data).to.be.an('array');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/skus?isActive=true",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"skus"
+					],
+					"query": [
+						{
+							"key": "isActive",
+							"value": "true"
+						}
+					]
+				},
+				"description": "Lists all SKUs in master catalogue."
+			},
+			"response": []
+		},
+		{
+			"name": "SKU Master - Get SKU By ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"skus",
+						"{{SKU_ID}}"
+					]
+				},
+				"description": "Retrieves a single SKU document by ID or skuCode."
+			},
+			"response": []
+		},
+		{
+			"name": "SKU Master - Patch SKU By ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"unitPrice\": 27.50,\n  \"tolerancePercentage\": 2.5\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"skus",
+						"{{SKU_ID}}"
+					]
+				},
+				"description": "Applies a partial update to a SKU entry."
+			},
+			"response": []
+		},
+		{
+			"name": "SKU Master - Delete SKU By ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 OK or 404', function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{TOKEN}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"skus",
+						"{{SKU_ID}}"
+					]
+				},
+				"description": "Deletes a SKU document from the master catalogue."
+			},
+			"response": []
+		}
+	]
+}

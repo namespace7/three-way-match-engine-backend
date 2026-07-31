@@ -4,10 +4,6 @@ const mongoose = require('mongoose');
 
 // ── Sub-document schemas ──────────────────────────────────────────────────────
 
-/**
- * Mirrors domain InvoiceLineItem value object.
- * _id disabled — line items carry no independent identity in persistence.
- */
 const invoiceLineItemSchema = new mongoose.Schema(
   {
     lineNumber:  { type: Number, required: true },
@@ -32,15 +28,6 @@ const invoiceSupplierSchema = new mongoose.Schema(
 
 // ── Root schema ───────────────────────────────────────────────────────────────
 
-/**
- * Persistence schema for the Invoice aggregate root.
- *
- * Field names are kept identical to the domain object to allow direct
- * mapping without transformation in the repository layer.
- *
- * No business logic lives here — overdue checks and quantity derivations
- * belong in the domain layer (src/domain/Invoice.js).
- */
 const invoiceSchema = new mongoose.Schema(
   {
     invoiceNumber: { type: String, required: true, trim: true },
@@ -54,6 +41,7 @@ const invoiceSchema = new mongoose.Schema(
     subtotal:      { type: Number, required: true, min: 0, default: 0 },
     taxAmount:     { type: Number, default: 0,     min: 0 },
     totalAmount:   { type: Number, required: true, min: 0, default: 0 },
+    filePath:      { type: String, default: null },
   },
   {
     timestamps: true,  // adds createdAt + updatedAt
@@ -64,7 +52,8 @@ const invoiceSchema = new mongoose.Schema(
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
-invoiceSchema.index({ invoiceNumber: 1 }, { unique: true, name: 'idx_invoice_number' });
+// Non-unique index on invoiceNumber allows duplicate invoice document uploads
+invoiceSchema.index({ invoiceNumber: 1 }, { name: 'idx_invoice_number' });
 invoiceSchema.index({ poReference: 1 },   { name: 'idx_invoice_po_reference' });
 invoiceSchema.index({ poReference: 1, invoiceNumber: 1 }, { name: 'idx_invoice_po_invoice' });
 invoiceSchema.index({ dueDate: 1 },                       { name: 'idx_invoice_due_date' });

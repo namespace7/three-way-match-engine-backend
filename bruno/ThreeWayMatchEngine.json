@@ -1,0 +1,369 @@
+{
+  "name": "Three-Way Match Engine API",
+  "version": "1.0.0",
+  "type": "collection",
+  "variables": [
+    {
+      "name": "BASE_URL",
+      "value": "http://localhost:5000",
+      "enabled": true
+    },
+    {
+      "name": "TOKEN",
+      "value": "static-bearer-token-3way-match-engine",
+      "enabled": true
+    },
+    {
+      "name": "PO_NUMBER",
+      "value": "PO-2024-0001",
+      "enabled": true
+    },
+    {
+      "name": "DOCUMENT_ID",
+      "value": "66ab8e9f1a2b3c4d5e6f7a8b",
+      "enabled": true
+    },
+    {
+      "name": "SKU_ID",
+      "value": "SKU-WIDGET-001",
+      "enabled": true
+    }
+  ],
+  "items": [
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "url": "{{BASE_URL}}/auth/login",
+        "headers": []
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "200"
+        },
+        {
+          "target": "res.body.data.token",
+          "operator": "isDefined"
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/health",
+        "headers": []
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "200"
+        },
+        {
+          "target": "res.body.success",
+          "operator": "eq",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "name": "Documents - Upload Document (Valid PDF)",
+      "request": {
+        "method": "POST",
+        "url": "{{BASE_URL}}/api/v1/documents/upload",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ],
+        "body": {
+          "mode": "multipartForm",
+          "multipartForm": [
+            {
+              "name": "file",
+              "type": "file",
+              "value": "valid_po.pdf",
+              "enabled": true
+            },
+            {
+              "name": "documentType",
+              "type": "text",
+              "value": "PURCHASE_ORDER",
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "201"
+        },
+        {
+          "target": "res.body.success",
+          "operator": "eq",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "name": "Documents - Upload Document (Executable File Rejection - Invoice.exe)",
+      "request": {
+        "method": "POST",
+        "url": "{{BASE_URL}}/api/v1/documents/upload",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ],
+        "body": {
+          "mode": "multipartForm",
+          "multipartForm": [
+            {
+              "name": "file",
+              "type": "file",
+              "value": "Invoice.exe",
+              "enabled": true
+            },
+            {
+              "name": "documentType",
+              "type": "text",
+              "value": "INVOICE",
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "415"
+        },
+        {
+          "target": "res.body.errors[0].code",
+          "operator": "eq",
+          "value": "UNSUPPORTED_FILE_TYPE"
+        }
+      ]
+    },
+    {
+      "name": "Documents - List Documents",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/documents?documentType=PURCHASE_ORDER&poNumber={{PO_NUMBER}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "name": "Documents - Get Document By ID",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/documents/{{DOCUMENT_ID}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "Documents - Stream Document File",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/documents/{{DOCUMENT_ID}}/file",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "Summary - Get PO Summary Dashboard",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/summary/{{PO_NUMBER}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "Matching - Execute Three-Way Match",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/match/{{PO_NUMBER}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "SKU Master - Create SKU",
+      "request": {
+        "method": "POST",
+        "url": "{{BASE_URL}}/api/v1/skus",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "201"
+        }
+      ]
+    },
+    {
+      "name": "SKU Master - List SKUs",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/skus?isActive=true",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "eq",
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "name": "SKU Master - Get SKU By ID",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "SKU Master - Patch SKU By ID",
+      "request": {
+        "method": "PATCH",
+        "url": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    },
+    {
+      "name": "SKU Master - Delete SKU By ID",
+      "request": {
+        "method": "DELETE",
+        "url": "{{BASE_URL}}/api/v1/skus/{{SKU_ID}}",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{TOKEN}}",
+            "enabled": true
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "target": "res.status",
+          "operator": "in",
+          "value": "[200, 404]"
+        }
+      ]
+    }
+  ]
+}

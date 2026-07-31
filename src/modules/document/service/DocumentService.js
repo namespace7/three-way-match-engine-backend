@@ -53,25 +53,14 @@ class DocumentService {
   /**
    * Runs the full document processing and persistence pipeline.
    *
-   * Steps:
-   *  1. Parse     — extract raw structured data from the file.
-   *  2. Map       — transform raw data into a canonical domain object.
-   *  3. Validate  — enforce business rules on the domain object.
-   *  4. Persist   — save to MongoDB via the corresponding repository.
-   *  5. Return    — return the persisted document.
-   *
    * @param {string} filePath     - Path to the uploaded file on disk.
    * @param {string} documentType - Expected type ('PURCHASE_ORDER' | 'GRN' | 'INVOICE').
    * @returns {Promise<Object>} The saved document.
    */
   async upload(filePath, documentType) {
-    // ── Step 1: Parse ────────────────────────────────────────────────────────
     const raw = await this._parse(filePath);
-
-    // ── Step 2: Map ──────────────────────────────────────────────────────────
     const mapped = this._map(raw, documentType);
 
-    // ── Step 3: Validate ─────────────────────────────────────────────────────
     const validation = this._validate(mapped, documentType);
     if (!validation.valid) {
       const error = new Error(`Document validation failed: ${validation.errors.join(', ')}`);
@@ -81,11 +70,52 @@ class DocumentService {
       throw error;
     }
 
-    // ── Step 4: Persist ──────────────────────────────────────────────────────
-    const savedDocument = await this._persist(mapped, documentType);
-
-    // ── Step 5: Return saved document ───────────────────────────────────────
+    const savedDocument = await this._persist(mapped, documentType, filePath);
     return savedDocument;
+  }
+
+  /**
+   * Queries documents across repositories filtered by documentType and poNumber.
+   */
+  async findDocuments({ documentType, poNumber } = {}) {
+    const poFilter = poNumber ? { poNumber } : {};
+    const refFilter = poNumber ? { poReference: poNumber } : {};
+
+    if (documentType) {
+      const type = documentType.trim().toUpperCase();
+      const repo = this._repositories[type];
+      if (repo && typeof repo.findMany === 'function') {
+        const filter = type === 'PURCHASE_ORDER' ? poFilter : refFilter;
+        return await repo.findMany(filter);
+      }
+      return [];
+    }
+
+    const [pos, grns, invoices] = await Promise.all([
+      this._repositories.PURCHASE_ORDER.findMany ? this._repositories.PURCHASE_ORDER.findMany(poFilter) : [],
+      this._repositories.GRN.findMany ? this._repositories.GRN.findMany(refFilter) : [],
+      this._repositories.INVOICE.findMany ? this._repositories.INVOICE.findMany(refFilter) : [],
+    ]);
+
+    return [...pos, ...grns, ...invoices];
+  }
+
+  /**
+   * Finds a document by Mongo ID across repositories.
+   */
+  async findDocumentById(id) {
+    for (const repoKey of ['PURCHASE_ORDER', 'GRN', 'INVOICE']) {
+      const repo = this._repositories[repoKey];
+      if (repo && typeof repo.findById === 'function') {
+        try {
+          const doc = await repo.findById(id);
+          if (doc) return doc;
+        } catch (_err) {
+          // Ignore invalid ObjectId errors
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -138,13 +168,16 @@ class DocumentService {
    * Saves the domain object data using the appropriate repository.
    * @private
    */
-  async _persist(mapped, documentType) {
+  async _persist(mapped, documentType, filePath) {
     const repo = this._repositories[documentType];
     if (!repo) {
       throw new Error(`DocumentService: repository for documentType "${documentType}" not found`);
     }
 
-    const dataToSave = typeof mapped.toJSON === 'function' ? mapped.toJSON() : mapped;
+    const dataToSave = typeof mapped.toJSON === 'function' ? mapped.toJSON() : { ...mapped };
+    if (filePath) {
+      dataToSave.filePath = filePath;
+    }
     return await repo.create(dataToSave);
   }
 }

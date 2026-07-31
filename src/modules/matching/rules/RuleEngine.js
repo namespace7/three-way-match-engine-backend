@@ -4,6 +4,7 @@ const MissingDocumentRule = require('./MissingDocumentRule');
 const QuantityRule = require('./QuantityRule');
 const PriceRule = require('./PriceRule');
 const ToleranceRule = require('./ToleranceRule');
+const DuplicateRule = require('./DuplicateRule');
 
 /**
  * @class RuleEngine
@@ -20,6 +21,7 @@ class RuleEngine {
       ? rules
       : [
           new MissingDocumentRule(),
+          new DuplicateRule(),
           new QuantityRule(),
           new PriceRule(),
           new ToleranceRule(),

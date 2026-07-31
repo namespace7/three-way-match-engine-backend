@@ -1,8 +1,7 @@
 'use strict';
 
-const MockDocumentParser = require('../parser/MockDocumentParser');
-const DocumentMapper = require('../mapper/DocumentMapper');
-const DocumentValidator = require('../validator/DocumentValidator');
+const fs = require('fs');
+const path = require('path');
 const DocumentService = require('../service/DocumentService');
 
 const VALID_DOCUMENT_TYPES = ['PURCHASE_ORDER', 'GRN', 'INVOICE'];
@@ -11,19 +10,13 @@ const VALID_DOCUMENT_TYPES = ['PURCHASE_ORDER', 'GRN', 'INVOICE'];
  * @class DocumentController
  *
  * Handles HTTP requests for document operations.
- * Responsibilities: receive request, validate multipart inputs, call DocumentService, return JSON response.
- * Contains no business logic.
  */
 class DocumentController {
   /**
    * @param {DocumentService} [documentService]
    */
   constructor(documentService) {
-    this._documentService = documentService || new DocumentService(
-      new MockDocumentParser(),
-      new DocumentMapper(),
-      new DocumentValidator()
-    );
+    this._documentService = documentService || new DocumentService();
   }
 
   /**
@@ -62,6 +55,76 @@ class DocumentController {
         success: true,
         data: savedDocument,
       });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Handles GET /api/v1/documents?documentType=...&poNumber=...
+   */
+  getDocuments = async (req, res, next) => {
+    try {
+      const { documentType, poNumber } = req.query;
+      const documents = await this._documentService.findDocuments({ documentType, poNumber });
+
+      return res.status(200).json({
+        success: true,
+        data: documents,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Handles GET /api/v1/documents/:id
+   */
+  getDocumentById = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const document = await this._documentService.findDocumentById(id);
+
+      if (!document) {
+        const error = new Error(`Document with ID "${id}" not found`);
+        error.statusCode = 404;
+        error.code = 'DOCUMENT_NOT_FOUND';
+        throw error;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: document,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Handles GET /api/v1/documents/:id/file
+   */
+  streamDocumentFile = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const document = await this._documentService.findDocumentById(id);
+
+      if (!document) {
+        const error = new Error(`Document with ID "${id}" not found`);
+        error.statusCode = 404;
+        error.code = 'DOCUMENT_NOT_FOUND';
+        throw error;
+      }
+
+      const filePath = document.filePath;
+      if (!filePath || !fs.existsSync(filePath)) {
+        const error = new Error(`Document file for ID "${id}" not found on disk`);
+        error.statusCode = 404;
+        error.code = 'FILE_NOT_FOUND';
+        throw error;
+      }
+
+      return res.sendFile(path.resolve(filePath));
     } catch (err) {
       next(err);
     }

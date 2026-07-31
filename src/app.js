@@ -6,8 +6,12 @@ require('express-async-errors');
 
 const env = require('./config/env');
 const logger = require('./shared/logger');
+const authMiddleware = require('./middlewares/auth');
+const authRoutes = require('./modules/auth/routes/AuthRoutes');
 const documentRoutes = require('./modules/document/routes/DocumentRoutes');
 const matchingRoutes = require('./modules/matching/routes/MatchingRoutes');
+const summaryRoutes = require('./modules/summary/routes/SummaryRoutes');
+const skuRoutes = require('./modules/sku/routes/SKURoutes');
 
 const app = express();
 
@@ -29,7 +33,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ---------------------------------------------------------------------------
-// Routes
+// Public / Unprotected Routes
 // ---------------------------------------------------------------------------
 
 /** GET /health — lightweight liveness probe */
@@ -37,33 +41,58 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ success: true, message: 'Server is running' });
 });
 
+/** Auth routes (unprotected login) */
+app.use('/auth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
+
+// ---------------------------------------------------------------------------
+// Protected API Routes (Requires Bearer token)
+// ---------------------------------------------------------------------------
+
+app.use('/api/v1', authMiddleware);
+
 /** Document management routes */
 app.use('/api/v1/documents', documentRoutes);
 
 /** Three-way matching routes */
 app.use('/api/v1/match', matchingRoutes);
 
+/** Summary dashboard routes */
+app.use('/api/v1/summary', summaryRoutes);
+
+/** SKU master CRUD routes */
+app.use('/api/v1/skus', skuRoutes);
+
 // ---------------------------------------------------------------------------
 // Global Error Handler
 // ---------------------------------------------------------------------------
 
 /**
- * Builds a standardised error response body.
+ * Builds a standardized error response body.
+ * Stack traces are included ONLY when NODE_ENV === 'development'.
+ * In all other environments (production, test, etc.), stack is completely omitted.
+ *
  * @param {string} code   - Machine-readable error code.
  * @param {string} message - Human-readable description.
- * @param {string|undefined} stack - Stack trace included only in development.
+ * @param {string|undefined} stack - Error stack trace.
  * @returns {{ success: false, errors: Array<{ code: string, message: string, stack?: string }> }}
  */
-const buildErrorResponse = (code, message, stack) => ({
-  success: false,
-  errors: [
-    {
-      code,
-      message,
-      ...(env.isDevelopment && stack ? { stack } : {}),
-    },
-  ],
-});
+const buildErrorResponse = (code, message, stack) => {
+  const isDev = process.env.NODE_ENV === 'development' || env.isDevelopment;
+  const errorObject = {
+    code,
+    message,
+  };
+
+  if (isDev && stack) {
+    errorObject.stack = stack;
+  }
+
+  return {
+    success: false,
+    errors: [errorObject],
+  };
+};
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
@@ -78,7 +107,7 @@ app.use((err, req, res, next) => {
     stack: err.stack,
   });
 
-  res.status(statusCode).json(buildErrorResponse(code, message, err.stack));
+  return res.status(statusCode).json(buildErrorResponse(code, message, err.stack));
 });
 
 module.exports = app;
