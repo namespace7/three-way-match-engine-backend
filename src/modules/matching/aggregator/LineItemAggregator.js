@@ -1,38 +1,47 @@
 'use strict';
 
+const SKUResolver = require('../../sku/service/SKUResolver');
+
 /**
  * @class LineItemAggregator
  *
  * Aggregates line item quantities and unit prices across Purchase Orders,
- * Goods Received Notes (GRNs), and Invoices, grouping metrics by SKU.
+ * Goods Received Notes (GRNs), and Invoices, grouping metrics by canonical SKU.
  */
 class LineItemAggregator {
   /**
-   * Aggregates line items from the provided document context grouped by SKU.
+   * @param {SKUResolver} [skuResolver]
+   */
+  constructor(skuResolver) {
+    this._skuResolver = skuResolver || new SKUResolver();
+  }
+
+  /**
+   * Aggregates line items from the provided document context grouped by canonical SKU.
    *
    * @param {Object} [context={}]
    * @param {Object} [context.purchaseOrder]
    * @param {Array} [context.grns]
    * @param {Array} [context.invoices]
-   * @returns {Array<{
+   * @returns {Promise<Array<{
    *   sku: string,
    *   orderedQuantity: number,
    *   receivedQuantity: number,
    *   invoicedQuantity: number,
    *   orderedPrice: number,
    *   invoicePrice: number
-   * }>} Array of aggregated SKU entries.
+   * }>>} Array of aggregated SKU entries.
    */
-  aggregate(context = {}) {
+  async aggregate(context = {}) {
     const { purchaseOrder, grns = [], invoices = [] } = context;
     const skuMap = new Map();
 
     /**
-     * Gets or initializes an aggregation record for a given SKU.
-     * @param {string} skuCode
+     * Gets or initializes an aggregation record for a given canonical SKU.
+     * @param {string} canonicalSku
      */
-    const getOrCreateEntry = (skuCode) => {
-      const normalisedSku = skuCode.trim().toUpperCase();
+    const getOrCreateEntry = (canonicalSku) => {
+      const normalisedSku = canonicalSku.trim().toUpperCase();
       if (!skuMap.has(normalisedSku)) {
         skuMap.set(normalisedSku, {
           sku: normalisedSku,
@@ -53,10 +62,14 @@ class LineItemAggregator {
         : purchaseOrder.lineItems || [];
 
       for (const item of poItems) {
-        if (item && item.sku) {
-          const entry = getOrCreateEntry(item.sku);
-          entry.orderedQuantity += item.quantity || 0;
-          entry.orderedPrice = item.unitPrice || 0;
+        if (item) {
+          const rawIdentifier = item.sku || item.poSku || item.ean || item.barcode;
+          if (rawIdentifier) {
+            const canonicalSku = await this._skuResolver.resolve(item);
+            const entry = getOrCreateEntry(canonicalSku);
+            entry.orderedQuantity += item.quantity || 0;
+            entry.orderedPrice = item.unitPrice || 0;
+          }
         }
       }
     }
@@ -69,9 +82,13 @@ class LineItemAggregator {
           : grn?.lineItems || [];
 
         for (const item of grnItems) {
-          if (item && item.sku) {
-            const entry = getOrCreateEntry(item.sku);
-            entry.receivedQuantity += item.receivedQuantity || 0;
+          if (item) {
+            const rawIdentifier = item.sku || item.ean || item.barcode;
+            if (rawIdentifier) {
+              const canonicalSku = await this._skuResolver.resolve(item);
+              const entry = getOrCreateEntry(canonicalSku);
+              entry.receivedQuantity += item.receivedQuantity || 0;
+            }
           }
         }
       }
@@ -85,10 +102,14 @@ class LineItemAggregator {
           : invoice?.lineItems || [];
 
         for (const item of invoiceItems) {
-          if (item && item.sku) {
-            const entry = getOrCreateEntry(item.sku);
-            entry.invoicedQuantity += item.quantity || 0;
-            entry.invoicePrice = item.unitPrice || 0;
+          if (item) {
+            const rawIdentifier = item.sku || item.invoiceSku || item.ean || item.barcode;
+            if (rawIdentifier) {
+              const canonicalSku = await this._skuResolver.resolve(item);
+              const entry = getOrCreateEntry(canonicalSku);
+              entry.invoicedQuantity += item.quantity || 0;
+              entry.invoicePrice = item.unitPrice || 0;
+            }
           }
         }
       }

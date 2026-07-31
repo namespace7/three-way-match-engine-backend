@@ -32,7 +32,7 @@ class MatchingService {
    *
    * Workflow:
    *  1. Load documents (PO, GRNs, Invoices) via DocumentAggregator.
-   *  2. Run LineItemAggregator to group metrics by SKU.
+   *  2. Run LineItemAggregator to group metrics by canonical SKU.
    *  3. Execute RuleEngine on aggregated document and line items context.
    *  4. Pass rule results to ResultBuilder.
    *  5. Return MatchResult domain object.
@@ -45,7 +45,7 @@ class MatchingService {
     const context = await this._documentAggregator.aggregate(poNumber);
 
     // ── Step 2: Run LineItemAggregator ──────────────────────────────────────
-    const lineItems = this._lineItemAggregator.aggregate(context);
+    const lineItems = await this._lineItemAggregator.aggregate(context);
 
     const fullContext = {
       ...context,

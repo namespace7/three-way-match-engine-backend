@@ -1,16 +1,28 @@
 {
   "name": "three-way-match-engine",
   "version": "1.0.0",
-  "description": "Production-ready Three-Way Match Engine backend",
+  "description": "Backend implementation of a Three-Way Procurement Matching Engine",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namespace7/three-way-match-engine-backend.git"
+  },
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest"
   },
-  "keywords": [],
+  "keywords": [
+    "nodejs",
+    "express",
+    "mongodb",
+    "procurement",
+    "matching-engine",
+    "backend",
+    "gemini"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.19.0",
     "bcryptjs": "^3.0.3",
