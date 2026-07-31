@@ -50,6 +50,9 @@ const config = Object.freeze({
   JWT_SECRET: process.env.JWT_SECRET.trim(),
   NODE_ENV: nodeEnv,
 
+  AUTH_USERNAME: process.env.AUTH_USERNAME?.trim() || 'admin',
+  AUTH_PASSWORD: process.env.AUTH_PASSWORD?.trim() || 'admin',
+
   // Optional — defaults applied here so callers never receive undefined
   UPLOAD_DIRECTORY: process.env.UPLOAD_DIRECTORY?.trim() || './uploads',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY?.trim() || null,

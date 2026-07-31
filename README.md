@@ -24,6 +24,46 @@ The **Three-Way Match Engine** automates this verification pipeline, applying co
 
 ---
 
+## Authentication
+
+This project intentionally uses a single static authenticated user because full user management and identity provider setup are outside the core procurement reconciliation assignment scope.
+
+Authentication is environment-driven via two variables:
+
+```env
+AUTH_USERNAME=admin
+AUTH_PASSWORD=admin
+```
+
+To authenticate, send a `POST /auth/login` request with the configured credentials:
+
+```json
+POST /auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin"
+}
+```
+
+Upon validation, the endpoint returns the static Bearer token:
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "static-bearer-token-3way-match-engine",
+    "type": "Bearer",
+    "message": "Authentication successful"
+  }
+}
+```
+
+These environment credentials are used solely to issue the static Bearer token (`STATIC_TOKEN`). All protected `/api/v1` routes automatically verify this Bearer token in the `Authorization` header (`Authorization: Bearer static-bearer-token-3way-match-engine`).
+
+---
+
 ## Architecture
 
 ```
@@ -217,7 +257,7 @@ When a user calls `GET /api/v1/match/:poNumber`:
 
 ### 1. Authentication (`POST /auth/login`)
 - **Endpoint**: `POST /auth/login`
-- **Body**: `{}`
+- **Body**: `{ "username": "admin", "password": "admin" }`
 - **Response**: `{ "success": true, "data": { "token": "static-bearer-token-3way-match-engine", "type": "Bearer" } }`
 
 ### 2. Upload Document (`POST /api/v1/documents/upload`)
@@ -238,10 +278,12 @@ When a user calls `GET /api/v1/match/:poNumber`:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PORT` | **Yes** | — | Server HTTP port (e.g. `5000`) |
+| `PORT` | **Yes** | — | Server HTTP port (e.g. `5000` or `5001`) |
 | `NODE_ENV` | **Yes** | — | Execution environment (`development`, `production`, `test`) |
 | `MONGODB_URI` | **Yes** | — | MongoDB connection URI string |
 | `JWT_SECRET` | **Yes** | — | Secret string for JWT verification |
+| `AUTH_USERNAME` | No | `admin` | Username for static bearer token login |
+| `AUTH_PASSWORD` | No | `admin` | Password for static bearer token login |
 | `USE_GEMINI` | No | `false` | Set to `true` to use `GeminiDocumentParser`, `false` for `MockDocumentParser` |
 | `UPLOAD_DIRECTORY` | No | `./uploads` | Storage path for uploaded document files |
 | `GEMINI_API_KEY` | No | `null` | API Key for Google Gemini REST API |
