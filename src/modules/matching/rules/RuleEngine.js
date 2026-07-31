@@ -2,6 +2,8 @@
 
 const MissingDocumentRule = require('./MissingDocumentRule');
 const QuantityRule = require('./QuantityRule');
+const PriceRule = require('./PriceRule');
+const ToleranceRule = require('./ToleranceRule');
 
 /**
  * @class RuleEngine
@@ -19,6 +21,8 @@ class RuleEngine {
       : [
           new MissingDocumentRule(),
           new QuantityRule(),
+          new PriceRule(),
+          new ToleranceRule(),
         ];
   }
 
@@ -44,7 +48,11 @@ class RuleEngine {
       if (typeof rule.execute === 'function') {
         const result = await rule.execute(context);
         if (result) {
-          ruleResults.push(result);
+          if (Array.isArray(result)) {
+            ruleResults.push(...result);
+          } else {
+            ruleResults.push(result);
+          }
         }
       }
     }
