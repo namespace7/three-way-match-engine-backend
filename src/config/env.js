@@ -53,6 +53,7 @@ const config = Object.freeze({
   // Optional — defaults applied here so callers never receive undefined
   UPLOAD_DIRECTORY: process.env.UPLOAD_DIRECTORY?.trim() || './uploads',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY?.trim() || null,
+  USE_GEMINI: process.env.USE_GEMINI === 'true',
 
   // Convenience booleans derived from NODE_ENV
   isProduction: nodeEnv === 'production',

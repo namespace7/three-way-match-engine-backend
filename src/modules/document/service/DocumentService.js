@@ -1,6 +1,7 @@
 'use strict';
 
 const DocumentParser = require('../parser/DocumentParser');
+const ParserFactory = require('../parser/ParserFactory');
 const DocumentMapper = require('../mapper/DocumentMapper');
 const DocumentValidator = require('../validator/DocumentValidator');
 const PurchaseOrderRepository = require('../../../repositories/PurchaseOrderRepository');
@@ -19,25 +20,29 @@ const InvoiceRepository = require('../../../repositories/InvoiceRepository');
  */
 class DocumentService {
   /**
-   * @param {DocumentParser} parser
-   * @param {DocumentMapper} mapper
-   * @param {DocumentValidator} validator
+   * @param {DocumentParser} [parser] - If omitted, resolved via ParserFactory.
+   * @param {DocumentMapper} [mapper]
+   * @param {DocumentValidator} [validator]
    * @param {Object} [repositories={}]
    */
   constructor(parser, mapper, validator, repositories = {}) {
-    if (!(parser instanceof DocumentParser)) {
+    const resolvedParser = parser || ParserFactory.createParser();
+    const resolvedMapper = mapper || new DocumentMapper();
+    const resolvedValidator = validator || new DocumentValidator();
+
+    if (!(resolvedParser instanceof DocumentParser)) {
       throw new TypeError('DocumentService: parser must extend DocumentParser');
     }
-    if (!(mapper instanceof DocumentMapper)) {
+    if (!(resolvedMapper instanceof DocumentMapper)) {
       throw new TypeError('DocumentService: mapper must be an instance of DocumentMapper');
     }
-    if (!(validator instanceof DocumentValidator)) {
+    if (!(resolvedValidator instanceof DocumentValidator)) {
       throw new TypeError('DocumentService: validator must be an instance of DocumentValidator');
     }
 
-    this._parser = parser;
-    this._mapper = mapper;
-    this._validator = validator;
+    this._parser = resolvedParser;
+    this._mapper = resolvedMapper;
+    this._validator = resolvedValidator;
     this._repositories = {
       PURCHASE_ORDER: repositories.purchaseOrder || repositories.PURCHASE_ORDER || new PurchaseOrderRepository(),
       GRN: repositories.grn || repositories.GRN || new GRNRepository(),
