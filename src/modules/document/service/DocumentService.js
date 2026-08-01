@@ -58,6 +58,14 @@ class DocumentService {
    * @returns {Promise<Object>} The saved document.
    */
   async upload(filePath, documentType) {
+    const fs = require('fs');
+    if (!filePath || !fs.existsSync(filePath)) {
+      const error = new Error(`Uploaded file not found on disk at path: "${filePath || 'N/A'}"`);
+      error.statusCode = 400;
+      error.code = 'FILE_UPLOAD_FAILED';
+      throw error;
+    }
+
     const raw = await this._parse(filePath);
     const mapped = this._map(raw, documentType);
 

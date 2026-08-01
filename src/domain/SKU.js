@@ -42,7 +42,8 @@ class SKU {
     this._description    = description ?? '';
     this._unitPrice      = unitPrice;
     this._priceTolerance = priceTolerance ?? SKU.DEFAULT_PRICE_TOLERANCE;
-    this._unit           = unit ?? 'EACH';
+    const { normalizeUom } = require('../shared/uomNormalizer');
+    this._unit           = normalizeUom(unit);
   }
 
   // ── Identifiers ────────────────────────────────────────────────────────────

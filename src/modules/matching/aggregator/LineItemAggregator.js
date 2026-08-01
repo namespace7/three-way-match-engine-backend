@@ -71,6 +71,9 @@ class LineItemAggregator {
             const entry = getOrCreateEntry(canonicalSku);
             entry.orderedQuantity += item.quantity || 0;
             entry.orderedPrice = item.unitPrice || 0;
+            if (item.description && !entry.description) {
+              entry.description = item.description;
+            }
           }
         }
       }
@@ -118,8 +121,25 @@ class LineItemAggregator {
               const entry = getOrCreateEntry(canonicalSku);
               entry.invoicedQuantity += item.quantity || 0;
               entry.invoicePrice = item.unitPrice || 0;
+              if (item.description && !entry.description) {
+                entry.description = item.description;
+              }
             }
           }
+        }
+      }
+    }
+
+    // 4. Fallback: resolve missing product description from SKU Master catalogue
+    for (const entry of skuMap.values()) {
+      if (!entry.description && this._skuResolver?._skuRepository?.findBySkuCode) {
+        try {
+          const masterSku = await this._skuResolver._skuRepository.findBySkuCode(entry.sku);
+          if (masterSku) {
+            entry.description = masterSku.name || masterSku.description || '';
+          }
+        } catch (_err) {
+          // Ignore lookup errors
         }
       }
     }

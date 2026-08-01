@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const env = require('../../../config/env');
+const logger = require('../../../shared/logger');
 const DocumentService = require('../service/DocumentService');
 
 const VALID_DOCUMENT_TYPES = ['PURCHASE_ORDER', 'GRN', 'INVOICE'];
@@ -118,6 +120,13 @@ class DocumentController {
 
       const filePath = document.filePath;
       if (!filePath || !fs.existsSync(filePath)) {
+        const resolvedPath = filePath ? path.resolve(filePath) : 'N/A';
+        const uploadRoot = path.resolve(env.UPLOAD_DIRECTORY || 'uploads');
+        const dirExists = filePath ? fs.existsSync(path.dirname(resolvedPath)) : false;
+        const filename = document.originalFilename || document.filename || document.documentNumber || 'N/A';
+
+        logger.error(`[FILE_NOT_FOUND Diagnostic] Document ID: "${id}" | Filename: "${filename}" | Stored Path: "${filePath || 'N/A'}" | Resolved Path: "${resolvedPath}" | Exists: false | Directory Exists: ${dirExists} | Upload Root: "${uploadRoot}"`);
+
         const error = new Error(`Document file for ID "${id}" not found on disk`);
         error.statusCode = 404;
         error.code = 'FILE_NOT_FOUND';
