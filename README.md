@@ -206,9 +206,32 @@ In an Accounts Payable & Procurement application, the **backend database is the 
 - **Headers**: `Authorization: Bearer <TOKEN>`
 - **Response** (200 OK): Full match JSON with status, overall totals, quantities, reasons, and items.
 
-### 5. Get Summary Dashboard (`GET /api/v1/summary/:poNumber`)
-- **Headers**: `Authorization: Bearer <TOKEN>`
-- **Response** (200 OK): Summary card totals and document matrix.
+### 6. Production Landing Endpoint (`GET /`)
+- **Public / Unauthenticated**: Verification endpoint for deployment platforms (e.g. Render).
+- **Response** (200 OK):
+  ```json
+  {
+    "application": "Three-Way Match Engine API",
+    "description": "Enterprise 3-Way Purchase Order Matching Service",
+    "status": "healthy",
+    "environment": "production",
+    "version": "1.0.0",
+    "timestamp": "2026-08-01T22:05:48.000Z",
+    "documentation": "/api/v1",
+    "health": "/health"
+  }
+  ```
+
+### 7. Health Probe Endpoint (`GET /health`)
+- **Public / Unauthenticated**: Lightweight liveness probe for container orchestrators and deployment health checks.
+- **Response** (200 OK):
+  ```json
+  {
+    "status": "healthy",
+    "uptime": 124.58,
+    "timestamp": "2026-08-01T22:05:48.000Z"
+  }
+  ```
 
 ---
 

@@ -15,6 +15,9 @@ const skuRoutes = require('./modules/sku/routes/SKURoutes');
 
 const app = express();
 
+// Disable X-Powered-By header for production hardening
+app.disable('x-powered-by');
+
 // Security HTTP headers
 app.use(helmet());
 
@@ -36,9 +39,27 @@ app.use(express.urlencoded({ extended: true }));
 // Public / Unprotected Routes
 // ---------------------------------------------------------------------------
 
+/** GET / — production landing info endpoint */
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    application: 'Three-Way Match Engine API',
+    description: 'Enterprise 3-Way Purchase Order Matching Service',
+    status: 'healthy',
+    environment: process.env.NODE_ENV || 'development',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    documentation: '/api/v1',
+    health: '/health',
+  });
+});
+
 /** GET /health — lightweight liveness probe */
 app.get('/health', (_req, res) => {
-  res.status(200).json({ success: true, message: 'Server is running' });
+  res.status(200).json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 /** Auth routes (unprotected login) */
