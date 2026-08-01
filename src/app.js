@@ -96,9 +96,29 @@ const buildErrorResponse = (code, message, stack) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || err.status || 500;
-  const message = err.message || 'Internal Server Error';
-  const code = err.code || 'INTERNAL_SERVER_ERROR';
+  let statusCode = err.statusCode || err.status || 500;
+  let message = err.message || 'Internal Server Error';
+  let code = err.code || 'INTERNAL_SERVER_ERROR';
+
+  // Handle MongoDB E11000 Duplicate Key Error
+  if (err.name === 'MongoServerError' && (err.code === 11000 || err.code === 11001)) {
+    statusCode = 409;
+    code = 'DUPLICATE_KEY_ERROR';
+
+    let fieldName = 'field';
+    let duplicateValue = '';
+    if (err.keyPattern) {
+      fieldName = Object.keys(err.keyPattern)[0];
+    }
+    if (err.keyValue) {
+      duplicateValue = err.keyValue[fieldName];
+    }
+
+    const humanField = fieldName === 'skuCode' ? 'SKU Code' : fieldName === 'eanCode' ? 'EAN Code' : fieldName;
+    message = duplicateValue
+      ? `A SKU document with ${humanField} "${duplicateValue}" already exists.`
+      : `A SKU document with conflicting ${humanField} already exists.`;
+  }
 
   logger.error(`[Global Error] ${statusCode} - ${message}`, {
     code,

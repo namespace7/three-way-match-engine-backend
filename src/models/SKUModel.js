@@ -26,9 +26,19 @@ const skuSchema = new mongoose.Schema(
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
-skuSchema.index({ skuCode: 1 },  { unique: true,                  name: 'idx_sku_code' });
-skuSchema.index({ eanCode: 1 },  { unique: true, sparse: true,    name: 'idx_sku_ean_code' });
-skuSchema.index({ isActive: 1 },                                  { name: 'idx_sku_is_active' });
+skuSchema.index({ skuCode: 1 }, { unique: true, name: 'idx_sku_code' });
+
+// Partial filter expression ensures uniqueness is enforced ONLY when eanCode is a non-empty string.
+// Documents with eanCode: null, eanCode: undefined, or eanCode: "" are completely ignored by the unique index.
+skuSchema.index(
+  { eanCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { eanCode: { $type: 'string', $gt: '' } },
+    name: 'idx_sku_ean_code',
+  }
+);
+skuSchema.index({ isActive: 1 }, { name: 'idx_sku_is_active' });
 
 // ── Model export ──────────────────────────────────────────────────────────────
 
