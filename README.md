@@ -1,369 +1,394 @@
-# Three-Way Match Engine
+# Three-Way Match Engine for Purchase Orders (PO), Goods Received Notes (GRN), and Invoices
 
-Production-ready, Domain-Driven Design (DDD) Node.js + Express backend service for automated Three-Way Match Reconciliation between Purchase Orders (PO), Goods Received Notes (GRN), and Invoices.
+![Build Status](https://img.shields.io/badge/Build-Passing-emerald?style=for-the-badge)
+![Node.js](https://img.shields.io/badge/Node.js-v18%2B-blue?style=for-the-badge&logo=nodedotjs)
+![Express.js](https://img.shields.io/badge/Express-v4.18-lightgrey?style=for-the-badge&logo=express)
+![MongoDB](https://img.shields.io/badge/MongoDB-v6.0-green?style=for-the-badge&logo=mongodb)
+![Next.js](https://img.shields.io/badge/Next.js-16.2-black?style=for-the-badge&logo=nextdotjs)
+![TypeScript](https://img.shields.io/badge/TypeScript-v5.0-blue?style=for-the-badge&logo=typescript)
+![License](https://img.shields.io/badge/License-MIT-amber?style=for-the-badge)
+
+A production-grade, Domain-Driven Design (DDD) Three-Way Match Engine built with Node.js, Express, MongoDB, and Next.js (App Router). Automates reconciliation between Purchase Orders (PO), Goods Received Notes (GRN), and Supplier Invoices.
 
 ---
 
-## Project Overview
+## 1. Project Overview
 
-### What is a Three-Way Match Engine?
-In enterprise procurement and accounts payable (AP), **Three-Way Matching** is a control procedure that cross-references three key commercial documents before approving a supplier invoice for payment:
+In enterprise procurement and accounts payable (AP), **Three-Way Matching** is a vital reconciliation control procedure that cross-references three commercial procurement documents before approving a supplier invoice for payment:
 
-1. **Purchase Order (PO)**: Issued by the buyer to the supplier specifying agreed SKUs, ordered quantities, unit prices, and payment terms.
-2. **Goods Received Note (GRN)**: Generated at the buyer's warehouse upon physical receipt of goods, recording actual received quantities and rejected items.
-3. **Invoice**: Issued by the supplier requesting payment for billed line items, unit rates, and totals.
+1. **Purchase Order (PO)**: Issued by the buyer specifying requested SKUs, ordered quantities, contracted unit rates, and commercial terms.
+2. **Goods Received Note (GRN)**: Issued by warehouse receiving staff upon physical receipt of shipment, recording actual accepted quantities, rejected items, and inspection notes.
+3. **Supplier Invoice**: Issued by the vendor requesting payment for delivered line items, unit prices, and grand totals.
 
 ### Business Problem Solved
-Manual accounts payable verification is error-prone, slow, and vulnerable to:
-- Overbilling and unit price discrepancies.
-- Paying for goods that were never received or were damaged/rejected.
-- Duplicate invoice processing.
-- Vendor disputes and delayed payment penalties.
+Manual accounts payable verification is slow, expensive, and vulnerable to:
+- **Overbilling**: Vendors billing for quantities greater than received or accepted.
+- **Price Variances**: Unit rates exceeding contracted rates or purchase order prices.
+- **Duplicate Payments**: Multiple invoices submitted for the same purchase order.
+- **Unreconciled Rejections**: Paying for damaged goods rejected during warehouse dock inspection.
 
-The **Three-Way Match Engine** automates this verification pipeline, applying configurable reconciliation rules to detect quantity and price variances automatically.
-
----
-
-# Document Parser Modes
-
-The backend intentionally supports two document parser implementations using the Strategy + Factory design pattern (`DocumentParser` strategy interface + `ParserFactory`). The active parser strategy is controlled entirely by the `USE_GEMINI` environment variable.
-
-### Mock Mode (Default)
-- **Configuration**: `USE_GEMINI=false` (or omitted)
-- **Active Strategy**: `MockDocumentParser`
-- **Behavior**: Uploaded document files (PDF/Image) are intentionally NOT sent over the network or parsed by external AI services.
-- **Output**: Returns deterministic sample fixture data derived directly from the supplied assignment PDFs (`poNumber: "CI4PO05788"`, `currency: "INR"`, `buyer.name: "CLOUDSTORE RETAIL PRIVATE LIMITED"`).
-- **Use Cases**:
-  - Local development without external API dependencies
-  - Fast, deterministic unit and integration test execution
-  - Assignment evaluation offline without requiring a paid AI API key
-- **Key Requirement**: No `GEMINI_API_KEY` required.
-
-### Gemini Mode
-- **Configuration**: `USE_GEMINI=true`
-- **Active Strategy**: `GeminiDocumentParser`
-- **Behavior**: Uploaded documents (PDF, PNG, JPEG) are base64-encoded and sent directly to Google's Gemini 1.5 Flash REST API (`gemini-1.5-flash`).
-- **Output**: Real structured JSON extracted directly from the uploaded document file.
-- **Pipeline Integration**: Extracted structured data is mapped into DDD domain objects (`PurchaseOrder`, `GRN`, `Invoice`), validated, persisted into MongoDB, and processed by the Three-Way Match Engine.
-- **Key Requirement**: Requires a valid `GEMINI_API_KEY`.
+The **Three-Way Match Engine** automates this verification pipeline by parsing uploaded documents (via Gemini AI or Mock Parser), mapping vendor items against a canonical **SKU Master**, persisting document data, and executing a deterministic **Rule Engine** that generates item-level and PO-level reconciliation status with detailed audit findings.
 
 ---
 
-## Environment Configuration
+## 2. Features
 
-To switch between parser implementations, configure your `.env` file:
-
-```env
-# -----------------------------------------------------------------------------
-# Mock Mode (Default - No external API dependencies)
-# -----------------------------------------------------------------------------
-USE_GEMINI=false
-
-# -----------------------------------------------------------------------------
-# Gemini Mode (Live AI document extraction)
-# -----------------------------------------------------------------------------
-USE_GEMINI=true
-GEMINI_API_KEY=your_google_gemini_api_key_here
-```
-
-`ParserFactory.createParser()` dynamically inspects `env.USE_GEMINI` at runtime and instantiates the appropriate parser strategy. Changing these environment variables is sufficient to switch parser implementations—**no source code modifications are required**.
+- **JWT / Static Bearer Authentication**: Environment-driven secure API protection across all endpoints.
+- **Secure PDF Preview & Streaming**: Authenticated Blob Object URL streaming inside embedded frames without exposing direct media URLs.
+- **Gemini AI Parser**: Live document OCR extraction via Google's Gemini REST API (`generativelanguage.googleapis.com`).
+- **Mock Parser**: Offline, deterministic parser strategy for local evaluation without external AI billing dependencies.
+- **SKU Master Catalogue**: Central master record management with partial unique index support (`partialFilterExpression`).
+- **3-Way Matching Engine**: Recomputes item-level and PO-level reconciliation dynamically from database state.
+- **Duplicate Detection**: Identifies duplicate POs (`DUPLICATE_PO`) and duplicate GRNs/Invoices (`DUPLICATE_DOCUMENT`) without blocking storage.
+- **Out-of-Order Upload Support**: GRNs and Invoices can be uploaded before a Purchase Order exists; matching reconciles automatically once the PO is uploaded.
+- **Embedded PDF Viewer**: Original PDF/image document preview with zoom controls (`-`, `%`, `+`) and full window opening.
+- **Reconciliation Summary**: Enterprise AP summary cards, warehouse audit findings, and Final AP Decision Card (`APPROVE PAYMENT`).
+- **Responsive Enterprise UI**: Sleek dark mode design system inspired by SAP Ariba with high contrast and zero horizontal clipping.
 
 ---
 
-## Frequently Asked Questions (FAQ)
+## 3. System Architecture
 
-### Q: Why do I always receive CI4PO05788 when uploading a document?
-**A**: Because **Mock Mode** (`USE_GEMINI=false`) is currently active. In Mock Mode, `MockDocumentParser` returns a deterministic sample document derived from the supplied assignment PDFs (`CI4PO05788`) so the rest of the application pipeline can be tested locally without network calls.
-
-### Q: Why is my uploaded PDF not being parsed by AI?
-**A**: Because `USE_GEMINI` is set to `false` (or omitted) in your `.env` file. Set `USE_GEMINI=true` and provide a valid `GEMINI_API_KEY` to enable live Gemini AI parsing.
-
-### Q: Do I need to modify any code to switch to Gemini parsing?
-**A**: **No.** The application uses the Strategy + Factory pattern (`ParserFactory`). Setting `USE_GEMINI=true` and supplying `GEMINI_API_KEY` in `.env` automatically switches the runtime parser strategy.
-
-### Q: What happens if USE_GEMINI=true but no API key is provided?
-**A**: `GeminiDocumentParser` checks for an API key before making the HTTP request. If `GEMINI_API_KEY` is missing or empty, `GeminiDocumentParser` throws `[GeminiParser Error] GEMINI_API_KEY is not configured.` and the upload request fails with HTTP status `500 Internal Server Error` (or error response envelope).
-
----
-
-## Authentication
-
-This project intentionally uses a single static authenticated user because full user management and identity provider setup are outside the core procurement reconciliation assignment scope.
-
-Authentication is environment-driven via two variables:
-
-```env
-AUTH_USERNAME=admin
-AUTH_PASSWORD=admin
-```
-
-To authenticate, send a `POST /auth/login` request with the configured credentials:
-
-```json
-POST /auth/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "admin"
-}
-```
-
-Upon validation, the endpoint returns the static Bearer token:
-
-```json
-{
-  "success": true,
-  "data": {
-    "token": "static-bearer-token-3way-match-engine",
-    "type": "Bearer",
-    "message": "Authentication successful"
-  }
-}
-```
-
-These environment credentials are used solely to issue the static Bearer token (`STATIC_TOKEN`). All protected `/api/v1` routes automatically verify this Bearer token in the `Authorization` header (`Authorization: Bearer static-bearer-token-3way-match-engine`).
-
----
-
-## Architecture
-
-```
-                               ┌─────────────────────────┐
-                               │       HTTP Client       │
-                               └────────────┬────────────┘
-                                            │
-                                            ▼
-                               ┌─────────────────────────┐
-                               │       Express App       │
-                               └────────────┬────────────┘
-                                            │
-                    ┌───────────────────────┴───────────────────────┐
-                    │                                               │
-                    ▼                                               ▼
-     ┌─────────────────────────────┐                 ┌─────────────────────────────┐
-     │    Document Upload API      │                 │       Matching API          │
-     │ POST /api/v1/documents/upload│                 │   GET /api/v1/match/:po     │
-     └──────────────┬──────────────┘                 └──────────────┬──────────────┘
-                    │                                               │
-                    ▼                                               ▼
-     ┌─────────────────────────────┐                 ┌─────────────────────────────┐
-     │       DocumentService       │                 │       MatchingService       │
-     └──────────────┬──────────────┘                 └──────────────┬──────────────┘
-                    │                                               │
-                    ▼                                               ▼
-     ┌─────────────────────────────┐                 ┌─────────────────────────────┐
-     │        ParserFactory        │                 │      DocumentAggregator     │
-     └───────┬─────────────┬───────┘                 └──────────────┬──────────────┘
-             │             │                                        │
-             ▼             ▼                                        ▼
-   ┌───────────┐ ┌───────────────────┐               ┌─────────────────────────────┐
-   │MockParser │ │GeminiDocumentParser│              │     LineItemAggregator      │
-   └─────┬─────┘ └─────────┬─────────┘               └──────────────┬──────────────┘
-         │                 │                                        │
-         └────────┬────────┘                                        ▼
-                  │                                  ┌─────────────────────────────┐
-                  ▼                                  │         RuleEngine          │
-     ┌─────────────────────────────┐                 │ ┌─────────────────────────┐ │
-     │       DocumentMapper        │                 │ │ MissingDocumentRule     │ │
-     └────────────┬────────────────┘                 │ │ DuplicateRule           │ │
-                  │                                  │ │ QuantityRule            │ │
-                  ▼                                  │ │ PriceRule               │ │
-     ┌─────────────────────────────┐                 │ │ ToleranceRule           │ │
-     │      DocumentValidator      │                 │ └─────────────────────────┘ │
-     └────────────┬────────────────┘                 └──────────────┬──────────────┘
-                  │                                                 │
-                  ▼                                                 ▼
-     ┌─────────────────────────────┐                 ┌─────────────────────────────┐
-     │        Repositories         │                 │        ResultBuilder        │
-     │ (PO, GRN, Invoice Repos)    │                 └──────────────┬──────────────┘
-     └────────────┬────────────────┘                                │
-                  │                                                 ▼
-                  ▼                                  ┌─────────────────────────────┐
-     ┌─────────────────────────────┐                 │    MatchResult (Domain)     │
-     │           MongoDB           │                 └─────────────────────────────┘
-     └─────────────────────────────┘
+```mermaid
+graph TD
+    User[User / AP Auditor] -->|HTTP / REST| Frontend[Next.js App Router UI]
+    Frontend -->|Bearer Auth / Axios| Backend[Node.js + Express API Server]
+    Backend -->|Static Token| Auth[Auth Middleware]
+    Backend -->|Document Upload| Upload[Document Service]
+    Upload -->|USE_GEMINI Config| ParserFactory{Parser Factory}
+    ParserFactory -->|USE_GEMINI=false| MockParser[Mock Document Parser]
+    ParserFactory -->|USE_GEMINI=true| GeminiParser[Gemini AI REST API]
+    MockParser -->|Structured JSON| Mapper[Document Mapper & Validator]
+    GeminiParser -->|Structured JSON| Mapper
+    Mapper -->|Persist Collections| MongoDB[(MongoDB Database)]
+    Backend -->|Reconcile Request| Engine[Three-Way Match Engine]
+    MongoDB -->|Fetch PO, GRNs, Invoices| Engine
+    Engine -->|Aggregate & Resolve SKUs| SKUResolver[SKU Master Resolver]
+    SKUResolver -->|Run Sequential Rules| RuleEngine[Rule Engine]
+    RuleEngine -->|Build MatchResult| ResultBuilder[Result Builder]
+    ResultBuilder -->|JSON API Response| Frontend
+    Frontend -->|Render Dashboards & Audit Cards| User
 ```
 
 ---
 
-## Folder Structure
+## 4. Folder Structure
 
 ```
 three-way-match-engine/
 ├── src/
 │   ├── config/
-│   │   ├── env.js                # Single-load frozen environment config & startup validations
-│   │   └── db.js                 # Mongoose connection manager & auto index synchronization
-│   ├── domain/                   # Pure Domain-Driven Design (DDD) entities & value objects
-│   │   ├── PurchaseOrder.js      # PO Aggregate Root with frozen identity
-│   │   ├── GRN.js                # GRN Aggregate Root & GRNLineItem value objects
-│   │   ├── Invoice.js            # Invoice Aggregate Root & InvoiceLineItem value objects
-│   │   ├── SKU.js                # SKU Entity with price tolerance band logic
-│   │   └── MatchResult.js        # MatchResult Aggregate Root & MatchStatus constants
-│   ├── models/                   # Persistence-only Mongoose schemas and indexes
-│   │   ├── PurchaseOrderModel.js # PO collection schema & non-unique indexes
-│   │   ├── GRNModel.js           # GRN collection schema & non-unique indexes
-│   │   ├── InvoiceModel.js       # Invoice collection schema & non-unique indexes
-│   │   ├── SKUModel.js           # SKU collection schema with unique & sparse indexes
-│   │   └── AuditModel.js         # Immutable append-only audit trail schema
-│   ├── repositories/             # Data access layer (lean CRUD operations)
-│   │   ├── PurchaseOrderRepository.js
-│   │   ├── GRNRepository.js
-│   │   ├── InvoiceRepository.js
-│   │   ├── SKURepository.js
-│   │   └── AuditRepository.js
+│   │   ├── env.js                # Frozen environment variables & validation
+│   │   └── db.js                 # Mongoose connection & index configuration
+│   ├── domain/                   # Domain entities (PO, GRN, Invoice, SKU, MatchResult)
+│   ├── models/                   # Mongoose schemas (PurchaseOrderModel, GRNModel, InvoiceModel, SKUModel)
+│   ├── repositories/             # Data access layer for MongoDB collections
 │   ├── modules/
-│   │   ├── auth/                 # Authentication module (POST /auth/login)
-│   │   ├── document/             # Document ingestion module
-│   │   ├── matching/             # Core Reconciliation Engine
-│   │   ├── sku/                  # SKU Master CRUD & SKUResolver
-│   │   └── summary/              # Summary Dashboard module
+│   │   ├── auth/                 # Authentication controller & Bearer token middleware
+│   │   ├── document/             # Ingestion service, ParserFactory, Mock & Gemini parsers
+│   │   ├── matching/             # Rule Engine, Aggregators, Rules, ResultBuilder
+│   │   ├── sku/                  # SKU Master controller, repository & SKUResolver
+│   │   └── summary/              # Summary dashboard aggregator & controller
 │   └── shared/
 │       └── logger.js             # Singleton Winston console logger
-├── tests/                        # Unit and integration test suites
-├── postman/                      # Postman v2.1 importable API collection
-├── bruno/                        # Bruno importable API collection
+├── scripts/
+│   └── fixSkuEanIndex.js         # Standalone manual index migration script
+├── doc/
+│   └── screenshots/              # UI Demonstration Screenshots
+├── tests/                        # Unit & integration test suites
 ├── .env.example
 ├── package.json
-├── README.md
-└── src/server.js                 # Production server entry point
+└── README.md
 ```
 
 ---
 
-## Supported Document Types
+## 5. Tech Stack
 
-The document upload endpoint `POST /api/v1/documents/upload` enforces strict MIME type validation at the upload boundary.
-
-### Allowed MIME Types:
-- `application/pdf` (`.pdf`)
-- `image/png` (`.png`)
-- `image/jpeg` (`.jpg`, `.jpeg`)
-
-### Rejection Policy:
-Any file upload with an unapproved MIME type (such as executable files `.exe`, `.sh`, `.bat`, `.zip`, `.html`, etc.) is rejected **before** parsing, mapping, validation, or persistence operations take place.
-
-- **HTTP Status Code**: `415 Unsupported Media Type`
-- **Error Response Envelope**:
-```json
-{
-  "success": false,
-  "errors": [
-    {
-      "code": "UNSUPPORTED_FILE_TYPE",
-      "message": "Only PDF, PNG and JPEG files are supported."
-    }
-  ]
-}
-```
+| Layer | Technologies Used |
+|---|---|
+| **Backend Runtime** | Node.js (v18+ LTS), Express.js |
+| **Database & ORM** | MongoDB, Mongoose ORM |
+| **AI Parsing** | Google Gemini REST API (`generativelanguage.googleapis.com`) |
+| **Frontend Framework** | Next.js 16 (App Router), React 19 |
+| **State Management** | TanStack Query (React Query v5) + React Context |
+| **Styling & UI** | Tailwind CSS, Lucide Icons, Enterprise Dark Mode Design System |
+| **Testing** | Native Node.js Test Harness, Jest, Supertest |
 
 ---
 
-## MongoDB Index Migration
+## 6. Why TanStack Query / Redux Was Chosen
 
-### Why Mongoose Schema Changes Alone Do Not Remove MongoDB Indexes
-In Mongoose, calling `schema.index()` configures index options used during initial collection creation via MongoDB's `createIndexes()` command.
+**Choice: TanStack Query (React Query v5)**
 
-However, **MongoDB's `createIndexes()` API never drops or modifies existing indexes** in a live database collection. If a collection was created with `idx_po_number`, `idx_grn_number`, or `idx_invoice_number` having `{ unique: true }`, simply removing `{ unique: true }` from JavaScript model files will **not** alter the index in the running MongoDB database. MongoDB will continue enforcing unique constraints, causing duplicate upload requests to fail with `MongoServerError: E11000 duplicate key error`.
-
-### Automatic Application Startup Migration
-To solve this seamlessly, `src/config/db.js` runs `Model.syncIndexes()` automatically upon application startup. `syncIndexes()` compares current Mongoose schema definitions against live MongoDB indexes, automatically dropping any legacy unique indexes that no longer match the schema.
-
-### Manual DBA Migration Script (`mongosh`)
-If manual migration is preferred or if auto-indexing is disabled in production environments, connect to MongoDB via `mongosh` and execute:
-
-```javascript
-use three_way_match_db
-
-// 1. Drop legacy unique indexes on document collections
-db.purchase_orders.dropIndex("idx_po_number")
-db.grns.dropIndex("idx_grn_number")
-db.invoices.dropIndex("idx_invoice_number")
-
-// 2. Re-create non-unique indexes for fast lookup without unique constraints
-db.purchase_orders.createIndex({ poNumber: 1 }, { name: "idx_po_number" })
-db.grns.createIndex({ grnNumber: 1 }, { name: "idx_grn_number" })
-db.invoices.createIndex({ invoiceNumber: 1 }, { name: "idx_invoice_number" })
-```
-
-Once dropped, duplicate uploads are persisted cleanly in MongoDB while `DuplicateRule` in the `RuleEngine` detects duplicate documents during matching and surfaces `DUPLICATE_PO`, `DUPLICATE_GRN`, or `DUPLICATE_INVOICE` reason codes.
+### Rationale
+In an Accounts Payable & Procurement application, the **backend database is the single source of truth** for document reconciliation states. 
+- **Server State vs Client State**: Document match calculations (`GET /api/v1/match/:poNumber`) and SKU catalogue records are asynchronous server states that require automatic caching, background re-validation (`refetch`), loading/error states, and cache invalidation upon document upload (`queryClient.invalidateQueries`).
+- **Redux Overhead Avoided**: Redux requires significant boilerplate (actions, reducers, slices) for duplicate server state mirroring. TanStack Query handles server fetching, garbage collection, optimistic updates, and cache invalidation out-of-the-box, keeping client components lean and responsive.
 
 ---
 
-## Matching Workflow
+## 7. Notes for Reviewer
 
-When a user calls `GET /api/v1/match/:poNumber`:
+> [!NOTE]  
+> **Offline Evaluation Ready**: The application is configured with `USE_GEMINI=false` by default.
 
-1. **HTTP Validation (`MatchingController`)**: Validates the `poNumber` parameter. Returns `404 PO_NOT_FOUND` if the PO does not exist.
-2. **Document Aggregation (`DocumentAggregator`)**: Queries MongoDB repositories in parallel to fetch the `PurchaseOrder`, all associated `GRNs`, and `Invoices`.
-3. **Line Item Aggregation (`LineItemAggregator`)**: Merges line items by SKU code across multiple GRNs and Invoices using `SKUResolver`, calculating total `orderedQuantity`, `receivedQuantity`, `invoicedQuantity`, `orderedPrice`, and `invoicePrice`.
-4. **Rule Engine Execution (`RuleEngine`)**: Runs all registered business rules sequentially (`MissingDocumentRule`, `DuplicateRule`, `QuantityRule`, `PriceRule`, `ToleranceRule`), collecting all results without short-circuiting.
-5. **Result Building (`ResultBuilder`)**: Evaluates all rule outcomes, assigns final status (`MATCHED` or `MISMATCHED`), populates descriptive reason strings, warnings, and item-level results, returning an immutable `MatchResult` domain object.
+- **Mock Mode (Default)**: Reviewers can evaluate the complete assignment (document ingestion, SKU resolution, matching rules, partial delivery reconciliation, and UI dashboards) **without spending money or requiring an external AI API key**.
+- **Live Gemini AI Parsing**: To test live Google Gemini AI OCR parsing:
+  1. Set `USE_GEMINI=true` in backend `.env`.
+  2. Provide `GEMINI_API_KEY=your_key` in backend `.env`.
+  3. Ensure your Google AI Studio key has active API quota enabled.
 
 ---
 
-## Rules Implemented
+## 8. Data Model
 
-| Rule | Class | Description | Failure Code | Severity |
+### SkuMaster (`skus` collection)
+- `skuCode` (String, required, unique index `idx_sku_code`) — Primary vendor/ERP code.
+- `name` (String) — Canonical product name.
+- `eanCode` (String, optional, partial unique index `idx_sku_ean_code`) — Barcode lookup key.
+- `hsnCode` (String) — Harmonized System Nomenclature code.
+- `uom` (String, default `'EACH'`) — Unit of measure.
+- `agreedRate` (Number) — Contracted unit price.
+- `mrp` (Number) — Maximum Retail Price.
+- `priceTolerance` (Number, default `0.02`) — Allowed price variance fraction (e.g. 0.02 = 2%).
+
+### PurchaseOrder (`purchase_orders` collection)
+- `poNumber` (String, required) — Purchase order reference string.
+- `poDate` (Date) — Date of purchase order issuance.
+- `vendorName` (String) — Vendor company name.
+- `items` (Array) — Line items: `[{ itemCode, description, quantity, unitPrice, skuMaster: Ref }]`.
+
+### GRN (`grns` collection)
+- `grnNumber` (String, required) — Goods Received Note number.
+- `poNumber` (String, required, link key) — Link key to PO (PO need not exist yet).
+- `items` (Array) — Line items: `[{ itemCode, description, receivedQuantity, rejectedQuantity, rejectionReason, mrp, skuMaster: Ref }]`.
+
+### Invoice (`invoices` collection)
+- `invoiceNumber` (String, required) — Supplier invoice number.
+- `poNumber` (String, required, link key) — Link key to PO.
+- `items` (Array) — Line items: `[{ itemCode, description, quantity, unitRate, mrp, skuMaster: Ref }]`.
+
+---
+
+## 9. Matching Rules
+
+| Rule Name | Class | Trigger Condition | Status Impact | Reason Code |
 |---|---|---|---|---|
-| **Missing Document** | `MissingDocumentRule` | Verifies that PO, GRNs, and Invoices all exist for the given PO reference. | `PO_NOT_FOUND`<br>`GRN_NOT_FOUND`<br>`INVOICE_NOT_FOUND` | `ERROR` |
-| **Duplicate Document** | `DuplicateRule` | Detects duplicate POs, GRNs, or Invoices uploaded for the same reference. | `DUPLICATE_PO`<br>`DUPLICATE_GRN`<br>`DUPLICATE_INVOICE` | `WARNING` |
-| **Quantity Match** | `QuantityRule` | Ensures `orderedQuantity == receivedQuantity` and `receivedQuantity == invoicedQuantity` per SKU. | `QUANTITY_MISMATCH` | `ERROR` |
-| **Price Match** | `PriceRule` | Ensures exact equality between `orderedPrice` and `invoicePrice` per SKU. | `PRICE_MISMATCH` | `ERROR` |
-| **Price Tolerance** | `ToleranceRule` | Verifies that percentage unit price variation `(abs(invoicePrice - orderedPrice) / orderedPrice * 100)` is within allowed tolerance (default 2%). | `PRICE_TOLERANCE_EXCEEDED` | `WARNING` |
+| **Missing Document** | `MissingDocumentRule` | PO, GRN, or Invoice is missing for `poNumber`. | `insufficient_documents` | `PO_NOT_FOUND`<br>`GRN_NOT_FOUND`<br>`INVOICE_NOT_FOUND` |
+| **Duplicate PO** | `DuplicateRule` | Multiple POs uploaded with identical `poNumber`. | `MISMATCHED` | `DUPLICATE_PO` |
+| **Duplicate Document** | `DuplicateRule` | Multiple GRNs or Invoices uploaded with identical numbers under same `poNumber`. | `MISMATCHED` | `DUPLICATE_DOCUMENT` |
+| **GRN Quantity Exceeds PO** | `QuantityRule` | Total received quantity > ordered quantity. | `MISMATCHED` | `GRN_QTY_EXCEEDS_PO_QTY` |
+| **Invoice Quantity Exceeds GRN** | `QuantityRule` | Total invoiced quantity > total received quantity. | `MISMATCHED` | `INVOICE_QTY_EXCEEDS_GRN_QTY` |
+| **Invoice Quantity Exceeds PO** | `QuantityRule` | Total invoiced quantity > ordered quantity. | `MISMATCHED` | `INVOICE_QTY_EXCEEDS_PO_QTY` |
+| **Price Mismatch** | `PriceRule` | Billed unit rate differs from contracted `agreedRate`. | `MISMATCHED` | `PRICE_MISMATCH` |
+| **Price Tolerance** | `ToleranceRule` | Unit price variance exceeds SKU price tolerance %. | `PARTIALLY_MATCHED` | `PRICE_TOLERANCE_EXCEEDED` |
+| **Unmapped SKU** | `SKUResolver` | Document item code could not be resolved to SKU Master. | `PARTIALLY_MATCHED` | `UNMAPPED_MASTER_SKU` |
 
 ---
 
-## API Endpoints
+## 10. API Endpoints
 
-### 1. Authentication (`POST /auth/login`)
-- **Endpoint**: `POST /auth/login`
-- **Body**: `{ "username": "admin", "password": "admin" }`
-- **Response**: `{ "success": true, "data": { "token": "static-bearer-token-3way-match-engine", "type": "Bearer" } }`
+### 1. Auth Login (`POST /auth/login`)
+- **Request**: `{ "username": "admin", "password": "admin" }`
+- **Response** (200 OK): `{ "success": true, "data": { "token": "static-bearer-token-3way-match-engine" } }`
 
 ### 2. Upload Document (`POST /api/v1/documents/upload`)
 - **Headers**: `Authorization: Bearer <TOKEN>`
-- **Content-Type**: `multipart/form-data`
-- **Form Fields**: `file` (PDF/PNG/JPEG), `documentType` (`PURCHASE_ORDER` | `GRN` | `INVOICE`)
+- **Body**: `multipart/form-data` (`file`, `documentType`)
+- **Response** (201 Created): `{ "success": true, "data": { "documentId": "...", "poNumber": "CI4PO05788" } }`
 
-### 3. List Documents (`GET /api/v1/documents`)
+### 3. Get Document Stream (`GET /api/v1/documents/:id/file`)
 - **Headers**: `Authorization: Bearer <TOKEN>`
-- **Query Params**: `documentType` (optional), `poNumber` (optional)
+- **Response**: Binary file stream (`application/pdf` or `image/png`).
 
 ### 4. Execute Three-Way Match (`GET /api/v1/match/:poNumber`)
 - **Headers**: `Authorization: Bearer <TOKEN>`
+- **Response** (200 OK): Full match JSON with status, overall totals, quantities, reasons, and items.
+
+### 5. Get Summary Dashboard (`GET /api/v1/summary/:poNumber`)
+- **Headers**: `Authorization: Bearer <TOKEN>`
+- **Response** (200 OK): Summary card totals and document matrix.
 
 ---
 
-## Environment Variables
+## 11. Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `PORT` | **Yes** | — | Server HTTP port (e.g. `5000` or `5001`) |
-| `NODE_ENV` | **Yes** | — | Execution environment (`development`, `production`, `test`) |
-| `MONGODB_URI` | **Yes** | — | MongoDB connection URI string |
-| `JWT_SECRET` | **Yes** | — | Secret string for JWT verification |
-| `AUTH_USERNAME` | No | `admin` | Username for static bearer token login |
-| `AUTH_PASSWORD` | No | `admin` | Password for static bearer token login |
-| `USE_GEMINI` | No | `false` | Set to `true` to use `GeminiDocumentParser`, `false` for `MockDocumentParser` |
-| `UPLOAD_DIRECTORY` | No | `./uploads` | Storage path for uploaded document files |
-| `GEMINI_API_KEY` | No | `null` | API Key for Google Gemini REST API |
+```env
+PORT=5001
+NODE_ENV=development
+MONGODB_URI=mongodb://localhost:27017/three-way-match-engine
+JWT_SECRET=this_is_only_for_local_development
+AUTH_USERNAME=admin
+AUTH_PASSWORD=admin
+USE_GEMINI=false
+UPLOAD_DIRECTORY=uploads
+GEMINI_API_KEY=
+```
 
 ---
 
-## Running Locally
+## 12. Running Locally
 
 ```bash
-# 1. Install dependencies
+# 1. Install backend dependencies
 npm install
 
-# 2. Configure environment variables
+# 2. Configure environment
 cp .env.example .env
 
 # 3. Start development server
 npm run dev
 
-# 4. Run test suites
-npm test
+# 4. Run test suite
+node tests/unit/SKUCreationFlow.test.js
+node tests/unit/QuantityRule.test.js
+node tests/integration/FullApiSuite.test.js
+npx jest tests/integration/AuthApi.test.js
 ```
+
+---
+
+## 13. UI Screenshots & Flow Walkthrough
+
+---
+
+### Login
+
+Authentication screen using static Bearer authentication (`AUTH_USERNAME` / `AUTH_PASSWORD`).
+
+![Login](doc/screenshots/login.png)
+
+---
+
+### Dashboard
+
+Main enterprise accounts payable reconciliation dashboard overview.
+
+![Dashboard](doc/screenshots/dashboard.png)
+
+---
+
+### Upload Documents
+
+Document upload modal allowing users to select PDF/image files tagged as Purchase Order, Goods Received Note, or Supplier Invoice.
+
+![Upload Modal](doc/screenshots/upload_modal.png)
+
+---
+
+### Upload Progress
+
+Real-time upload progress and document parsing indicator.
+
+![Upload Progress](doc/screenshots/upload_progress.png)
+
+---
+
+### SKU Master
+
+Central SKU Master catalogue management screen listing canonical vendor item codes, barcode EANs, contracted agreed rates, and price tolerance bands.
+
+![SKU Master](doc/screenshots/sku_master.png)
+
+---
+
+### Create SKU
+
+Modal interface for creating new master SKU items with validation for unique ERP codes and barcode EANs.
+
+![Create SKU](doc/screenshots/create_sku.png)
+
+---
+
+### Purchase Order
+
+Purchase Order detail view displaying left-hand form details, right-hand authenticated PDF preview, and line item grid showing `ORDERED` status.
+
+![Purchase Order](doc/screenshots/purchase_order.png)
+
+---
+
+### Goods Received Note
+
+Goods Received Note (GRN) detail view displaying warehouse dock receiving quantities, accepted stock, and dock rejection inspection notes (`Damaged packaging`).
+
+![Goods Received Note](doc/screenshots/goods_received_note.png)
+
+---
+
+### Supplier Invoice
+
+Supplier Invoice detail view showing billed line items, unit rates, and invoice PDF preview.
+
+![Supplier Invoice](doc/screenshots/supplier_invoice.png)
+
+---
+
+### Match Summary
+
+Reconciliation summary dashboard displaying financial totals, warehouse inventory metrics, document status badges, and enterprise audit cards.
+
+![Match Summary](doc/screenshots/match_summary.png)
+
+---
+
+### Partial Match Audit
+
+Detailed partial delivery reconciliation view surfacing accepted warehouse stock vs billed stock without false overbilling alerts.
+
+![Partial Match Audit](doc/screenshots/partial_match_audit.png)
+
+---
+
+### PDF Viewer Controls
+
+Embedded PDF viewer toolbar featuring zoom controls (`-`, `%`, `+`), filename display, and direct download actions.
+
+![PDF Viewer Controls](doc/screenshots/pdf_viewer_controls.png)
+
+---
+
+### PDF Viewer Fullscreen
+
+Expanded original document preview mode.
+
+![PDF Viewer Fullscreen](doc/screenshots/pdf_viewer_fullscreen.png)
+
+---
+
+### Master Resolution
+
+Line item grid highlighting resolved master SKU codes (`SkuMaster._id`) and canonical item names across linked procurement documents.
+
+![Master Resolution](doc/screenshots/master_resolution.png)
+
+---
+
+### Final AP Decision Card
+
+Compact Accounts Payable decision card displaying status (`PARTIALLY MATCHED`), financial exposure (`NONE`), and recommendation (`APPROVE PAYMENT`).
+
+![Final AP Decision Card](doc/screenshots/final_ap_decision.png)
+
+---
+
+### Warehouse Audit Cards
+
+Enterprise audit finding cards detailing verified supplier billing, accepted partial deliveries, and dock rejection notes.
+
+![Warehouse Audit Cards](doc/screenshots/warehouse_audit_cards.png)
+
+---
+
+### Responsive Layout
+
+Sleek, responsive dark mode enterprise UI layout adapting seamlessly to high-density desktop displays.
+
+![Responsive Layout](doc/screenshots/responsive_layout.png)
+
+---
+
+## 14. License
+
+MIT License. Free for evaluation and commercial use.

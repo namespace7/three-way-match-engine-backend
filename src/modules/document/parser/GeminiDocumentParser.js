@@ -22,7 +22,7 @@ class GeminiDocumentParser extends DocumentParser {
     super();
     this._apiKey = apiKey;
     this._httpClient = httpClient;
-    this._baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    this._baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
   }
 
   /**
