@@ -9,14 +9,18 @@ const DocumentController = require('../controller/DocumentController');
 
 const router = express.Router();
 
-// Ensure upload directory exists on startup
-if (!fs.existsSync(env.UPLOAD_DIRECTORY)) {
-  fs.mkdirSync(env.UPLOAD_DIRECTORY, { recursive: true });
-}
+// Ensure absolute upload directory path
+const getUploadDirectory = () => {
+  const targetDir = path.resolve(env.UPLOAD_DIRECTORY || './uploads');
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  return targetDir;
+};
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, env.UPLOAD_DIRECTORY);
+    cb(null, getUploadDirectory());
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
