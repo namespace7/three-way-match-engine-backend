@@ -53,8 +53,8 @@ app.get('/', (_req, res) => {
   });
 });
 
-/** GET /health — lightweight liveness probe */
-app.get('/health', (_req, res) => {
+/** GET /health & /api/v1/health — lightweight liveness probe */
+app.get(['/health', '/api/v1/health'], (_req, res) => {
   res.status(200).json({
     status: 'healthy',
     uptime: process.uptime(),
