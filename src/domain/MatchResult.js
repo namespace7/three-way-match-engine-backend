@@ -9,11 +9,12 @@
  * @enum {string}
  */
 const MatchStatus = Object.freeze({
-  PENDING:    'PENDING',     // Initial state — matching not yet run
-  MATCHED:    'MATCHED',     // All three documents agree within tolerances
-  PARTIAL:    'PARTIAL',     // Some lines match; others have discrepancies
-  MISMATCHED: 'MISMATCHED',  // One or more critical fields do not agree
-  ERROR:      'ERROR',       // Processing failure; cannot determine match
+  PENDING:           'PENDING',           // Initial state — matching not yet run
+  MATCHED:           'MATCHED',           // All three documents agree within tolerances
+  PARTIAL:           'PARTIALLY_MATCHED', // Backward compatible alias for PARTIALLY_MATCHED
+  PARTIALLY_MATCHED: 'PARTIALLY_MATCHED', // Partially fulfilled order without hard errors
+  MISMATCHED:        'MISMATCHED',        // One or more critical fields do not agree
+  ERROR:             'ERROR',             // Processing failure; cannot determine match
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -7,23 +7,21 @@ const DocumentParser = require('./DocumentParser');
  * @extends DocumentParser
  *
  * Test/development stand-in for a real AI-powered parser.
- * Returns hard-coded structured data so the rest of the pipeline
- * (mapper → validator → service) can be exercised without any external calls.
+ * Returns deterministic structured data derived from the sample assignment PDFs
+ * (Cloudstore Retail / M/s AFP procurement dataset) so the rest of the pipeline
+ * (mapper → validator → service → matching engine) can be exercised without external calls.
  *
  * Design notes (SOLID):
  *  - Single Responsibility : returns fixture data; nothing else.
  *  - Open/Closed           : swap for a real parser by providing a different
- *                            concrete class — this file never needs editing.
- *  - Dependency Inversion  : callers depend on DocumentParser, not this class.
+ *                            concrete class — callers depend on DocumentParser interface.
+ *  - Dependency Inversion  : callers depend on DocumentParser abstraction, not this class.
  */
 class MockDocumentParser extends DocumentParser {
   /**
-   * Returns a mocked parsed document object regardless of the file path.
+   * Returns a deterministic parsed document object based on the supplied assignment PDFs.
    *
-   * The shape intentionally contains all fields expected by the mapper layer
-   * so the full pipeline can be exercised end-to-end in tests.
-   *
-   * @param {string} filePath - Path to the document file (ignored in mock).
+   * @param {string} filePath - Path to the document file (ignored in mock mode).
    * @returns {Promise<Record<string, unknown>>} Mocked parsed document data.
    */
   async parse(filePath) { // eslint-disable-line no-unused-vars
@@ -31,101 +29,125 @@ class MockDocumentParser extends DocumentParser {
       documentType: 'PURCHASE_ORDER',
 
       purchaseOrder: {
-        poNumber: 'PO-2024-0001',
-        issueDate: '2024-01-15',
-        currency: 'USD',
+        poNumber: 'CI4PO05788',
+        issueDate: '2026-03-17',
+        currency: 'INR',
         buyer: {
-          name: 'Acme Corp',
-          address: '123 Buyer Street, New York, NY 10001',
-          taxId: 'US-TAX-123456',
+          name: 'CLOUDSTORE RETAIL PRIVATE LIMITED',
+          address: 'B-400, One K- Square Park, Padgha-Bhiwandi, Mumbai, Maharashtra - 421101, India',
+          taxId: '27AAKCC0172C1Z1',
         },
         supplier: {
-          name: 'Global Supplies Ltd',
-          address: '456 Supplier Ave, Los Angeles, CA 90001',
-          taxId: 'US-TAX-654321',
+          name: 'M/s AFP',
+          address: 'GALA NO 5/17 AB, Mumbai, Maharashtra, India-400072',
+          taxId: '27ABACA2423J1Z0',
         },
         lineItems: [
           {
             lineNumber: 1,
-            sku: 'SKU-WIDGET-001',
-            description: 'Blue Widget',
-            quantity: 100,
-            unitPrice: 9.99,
-            totalPrice: 999.0,
+            sku: '11423',
+            description: 'Cheesy Spicy Veg Momos 24.0 Pieces',
+            quantity: 50,
+            unitPrice: 220.76,
+            totalPrice: 11038.10,
           },
           {
             lineNumber: 2,
-            sku: 'SKU-GADGET-002',
-            description: 'Red Gadget',
-            quantity: 50,
-            unitPrice: 24.99,
-            totalPrice: 1249.5,
+            sku: '11797',
+            description: 'Meatigo Hot Wings 250.0 g',
+            quantity: 75,
+            unitPrice: 126.67,
+            totalPrice: 9500.03,
+          },
+          {
+            lineNumber: 3,
+            sku: '18003',
+            description: 'Meatigo Chicken Curry Cut Skinless Frozen 450.0 g',
+            quantity: 120,
+            unitPrice: 141.14,
+            totalPrice: 16937.14,
           },
         ],
-        totalAmount: 2248.5,
-        paymentTerms: 'Net 30',
+        totalAmount: 37475.27,
+        paymentTerms: '0 Days',
       },
 
       grn: {
-        grnNumber: 'GRN-2024-0001',
-        poReference: 'PO-2024-0001',
-        receivedDate: '2024-01-20',
-        warehouse: 'WH-EAST-01',
-        receivedBy: 'Jane Smith',
+        grnNumber: 'CI4000020234',
+        poReference: 'CI4PO05788',
+        receivedDate: '2026-03-24',
+        warehouse: 'B2B STAGING',
+        receivedBy: 'Dhaval',
         lineItems: [
           {
             lineNumber: 1,
-            sku: 'SKU-WIDGET-001',
-            orderedQuantity: 100,
-            receivedQuantity: 98,
-            rejectedQuantity: 2,
-            rejectionReason: 'Damaged packaging',
-          },
-          {
-            lineNumber: 2,
-            sku: 'SKU-GADGET-002',
+            sku: '11423',
             orderedQuantity: 50,
             receivedQuantity: 50,
             rejectedQuantity: 0,
             rejectionReason: null,
           },
+          {
+            lineNumber: 2,
+            sku: '11797',
+            orderedQuantity: 75,
+            receivedQuantity: 75,
+            rejectedQuantity: 0,
+            rejectionReason: null,
+          },
+          {
+            lineNumber: 3,
+            sku: '18003',
+            orderedQuantity: 120,
+            receivedQuantity: 30,
+            rejectedQuantity: 90,
+            rejectionReason: 'Damaged packaging',
+          },
         ],
       },
 
       invoice: {
-        invoiceNumber: 'INV-2024-0001',
-        poReference: 'PO-2024-0001',
-        grnReference: 'GRN-2024-0001',
-        issueDate: '2024-01-22',
-        dueDate: '2024-02-21',
-        currency: 'USD',
+        invoiceNumber: 'IN25MH2504251',
+        poReference: 'CI4PO05788',
+        grnReference: 'CI4000020234',
+        issueDate: '2026-03-24',
+        dueDate: '2026-03-24',
+        currency: 'INR',
         supplier: {
-          name: 'Global Supplies Ltd',
-          address: '456 Supplier Ave, Los Angeles, CA 90001',
-          taxId: 'US-TAX-654321',
-          bankAccount: 'BANK-ACC-9876',
+          name: 'M/s AFP',
+          address: 'M-8 /55/32, Taloja Navi Patalganga, Raigad, Mumbai Maharashtra-410206 INDIA',
+          taxId: '27ABACA2423J1Z0',
+          bankAccount: '50200034921174',
         },
         lineItems: [
           {
             lineNumber: 1,
-            sku: 'SKU-WIDGET-001',
-            description: 'Blue Widget',
-            quantity: 98,
-            unitPrice: 9.99,
-            totalPrice: 979.02,
+            sku: '11423',
+            description: 'Cheesy Spicy Veg Momos 24.0 Pieces',
+            quantity: 50,
+            unitPrice: 220.76,
+            totalPrice: 11038.00,
           },
           {
             lineNumber: 2,
-            sku: 'SKU-GADGET-002',
-            description: 'Red Gadget',
-            quantity: 50,
-            unitPrice: 24.99,
-            totalPrice: 1249.5,
+            sku: '11797',
+            description: 'Meatigo Hot Wings 250.0 g',
+            quantity: 75,
+            unitPrice: 126.67,
+            totalPrice: 9500.25,
+          },
+          {
+            lineNumber: 3,
+            sku: '18003',
+            description: 'Meatigo Chicken Curry Cut Skinless Frozen 450.0 g',
+            quantity: 30,
+            unitPrice: 141.14,
+            totalPrice: 4234.20,
           },
         ],
-        subtotal: 2228.52,
-        taxAmount: 0,
-        totalAmount: 2228.52,
+        subtotal: 24772.45,
+        taxAmount: 1238.62,
+        totalAmount: 26011.07,
       },
     };
   }

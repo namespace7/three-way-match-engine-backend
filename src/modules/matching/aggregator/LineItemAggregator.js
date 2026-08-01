@@ -47,6 +47,8 @@ class LineItemAggregator {
           sku: normalisedSku,
           orderedQuantity: 0,
           receivedQuantity: 0,
+          rejectedQuantity: 0,
+          rejectionReason: null,
           invoicedQuantity: 0,
           orderedPrice: 0,
           invoicePrice: 0,
@@ -88,6 +90,13 @@ class LineItemAggregator {
               const canonicalSku = await this._skuResolver.resolve(item);
               const entry = getOrCreateEntry(canonicalSku);
               entry.receivedQuantity += item.receivedQuantity || 0;
+              entry.rejectedQuantity = (entry.rejectedQuantity || 0) + (item.rejectedQuantity || 0);
+              if (item.rejectionReason) {
+                entry.rejectionReason = item.rejectionReason;
+              }
+              if (item.description && !entry.description) {
+                entry.description = item.description;
+              }
             }
           }
         }

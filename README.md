@@ -32,7 +32,7 @@ The backend intentionally supports two document parser implementations using the
 - **Configuration**: `USE_GEMINI=false` (or omitted)
 - **Active Strategy**: `MockDocumentParser`
 - **Behavior**: Uploaded document files (PDF/Image) are intentionally NOT sent over the network or parsed by external AI services.
-- **Output**: Returns deterministic sample fixture data (`poNumber: "PO-2024-0001"`, `currency: "USD"`, `buyer.name: "Acme Corp"`).
+- **Output**: Returns deterministic sample fixture data derived directly from the supplied assignment PDFs (`poNumber: "CI4PO05788"`, `currency: "INR"`, `buyer.name: "CLOUDSTORE RETAIL PRIVATE LIMITED"`).
 - **Use Cases**:
   - Local development without external API dependencies
   - Fast, deterministic unit and integration test execution
@@ -72,8 +72,8 @@ GEMINI_API_KEY=your_google_gemini_api_key_here
 
 ## Frequently Asked Questions (FAQ)
 
-### Q: Why do I always receive PO-2024-0001 when uploading a document?
-**A**: Because **Mock Mode** (`USE_GEMINI=false`) is currently active. In Mock Mode, `MockDocumentParser` returns a deterministic sample document (`PO-2024-0001`) so the rest of the application pipeline can be tested locally without network calls.
+### Q: Why do I always receive CI4PO05788 when uploading a document?
+**A**: Because **Mock Mode** (`USE_GEMINI=false`) is currently active. In Mock Mode, `MockDocumentParser` returns a deterministic sample document derived from the supplied assignment PDFs (`CI4PO05788`) so the rest of the application pipeline can be tested locally without network calls.
 
 ### Q: Why is my uploaded PDF not being parsed by AI?
 **A**: Because `USE_GEMINI` is set to `false` (or omitted) in your `.env` file. Set `USE_GEMINI=true` and provide a valid `GEMINI_API_KEY` to enable live Gemini AI parsing.

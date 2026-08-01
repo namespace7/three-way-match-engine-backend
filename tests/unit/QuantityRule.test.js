@@ -18,37 +18,37 @@ function runTests() {
   console.assert(res1.passed === true, 'Test 1 Failed');
   console.log('   Status: PASSED\n');
 
-  // Test 2: PO != GRN (Ordered != Received)
-  const poGrnMismatchItems = [
+  // Test 2: Partial Delivery (Ordered: 100, Received: 95, Invoiced: 95) — Valid partial fulfillment (No over-quantity)
+  const partialDeliveryItems = [
     { sku: 'SKU-001', orderedQuantity: 100, receivedQuantity: 95, invoicedQuantity: 95 },
   ];
-  const res2 = rule.execute(poGrnMismatchItems);
-  console.log('2. PO != GRN Test (Ordered: 100, Received: 95, Invoiced: 95):');
+  const res2 = rule.execute(partialDeliveryItems);
+  console.log('2. Partial Delivery Test (Ordered: 100, Received: 95, Invoiced: 95):');
   console.log('   Result:', JSON.stringify(res2));
-  console.assert(res2.passed === false && res2.code === 'QUANTITY_MISMATCH', 'Test 2 Failed');
+  console.assert(res2.passed === true, 'Test 2 Failed');
   console.log('   Status: PASSED\n');
 
-  // Test 3: GRN != Invoice (Received != Invoiced)
+  // Test 3: Over-Invoicing (Invoice > Received: Invoiced 105, Received 100)
   const grnInvoiceMismatchItems = [
     { sku: 'SKU-001', orderedQuantity: 100, receivedQuantity: 100, invoicedQuantity: 105 },
   ];
   const res3 = rule.execute(grnInvoiceMismatchItems);
-  console.log('3. GRN != Invoice Test (Ordered: 100, Received: 100, Invoiced: 105):');
+  console.log('3. Over-Invoicing Test (Ordered: 100, Received: 100, Invoiced: 105):');
   console.log('   Result:', JSON.stringify(res3));
-  console.assert(res3.passed === false && res3.code === 'QUANTITY_MISMATCH', 'Test 3 Failed');
+  console.assert(res3.passed === false && res3.code === 'INVOICE_QTY_EXCEEDS_GRN_QTY', 'Test 3 Failed');
   console.log('   Status: PASSED\n');
 
-  // Test 4: PO != Invoice (Ordered: 100, Received: 90, Invoiced: 100)
-  const poInvoiceMismatchItems = [
-    { sku: 'SKU-001', orderedQuantity: 100, receivedQuantity: 90, invoicedQuantity: 100 },
+  // Test 4: Over-Receipt (GRN > PO: Received 110, Ordered 100)
+  const grnExceedsPoItems = [
+    { sku: 'SKU-001', orderedQuantity: 100, receivedQuantity: 110, invoicedQuantity: 100 },
   ];
-  const res4 = rule.execute(poInvoiceMismatchItems);
-  console.log('4. PO != Invoice Test (Ordered: 100, Received: 90, Invoiced: 100):');
+  const res4 = rule.execute(grnExceedsPoItems);
+  console.log('4. Over-Receipt Test (Ordered: 100, Received: 110, Invoiced: 100):');
   console.log('   Result:', JSON.stringify(res4));
-  console.assert(res4.passed === false && res4.code === 'QUANTITY_MISMATCH', 'Test 4 Failed');
+  console.assert(res4.passed === false && res4.code === 'GRN_QTY_EXCEEDS_PO_QTY', 'Test 4 Failed');
   console.log('   Status: PASSED\n');
 
-  console.log('All 4 test scenarios passed successfully!');
+  console.log('All test scenarios passed successfully!');
 }
 
 runTests();

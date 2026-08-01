@@ -38,18 +38,45 @@ class QuantityRule {
       const received = item.receivedQuantity ?? 0;
       const invoiced = item.invoicedQuantity ?? 0;
 
-      // Rule 1: orderedQuantity must equal receivedQuantity
-      // Rule 2: receivedQuantity must equal invoicedQuantity
-      if (ordered !== received || received !== invoiced) {
+      // 1. GRN quantity exceeds PO quantity
+      if (received > ordered) {
         return {
           passed: false,
-          code: 'QUANTITY_MISMATCH',
+          code: 'GRN_QTY_EXCEEDS_PO_QTY',
           severity: 'ERROR',
           sku: item.sku,
           expected: ordered,
           received,
           invoiced,
-          message: `Quantity mismatch for SKU ${item.sku}: ordered ${ordered}, received ${received}, invoiced ${invoiced}`,
+          message: `GRN quantity (${received}) exceeds PO quantity (${ordered}) for SKU ${item.sku}`,
+        };
+      }
+
+      // 2. Invoice quantity exceeds GRN received quantity
+      if (invoiced > received) {
+        return {
+          passed: false,
+          code: 'INVOICE_QTY_EXCEEDS_GRN_QTY',
+          severity: 'ERROR',
+          sku: item.sku,
+          expected: received,
+          received,
+          invoiced,
+          message: `Invoice quantity (${invoiced}) exceeds GRN received quantity (${received}) for SKU ${item.sku}`,
+        };
+      }
+
+      // 3. Invoice quantity exceeds PO quantity
+      if (invoiced > ordered) {
+        return {
+          passed: false,
+          code: 'INVOICE_QTY_EXCEEDS_PO_QTY',
+          severity: 'ERROR',
+          sku: item.sku,
+          expected: ordered,
+          received,
+          invoiced,
+          message: `Invoice quantity (${invoiced}) exceeds PO quantity (${ordered}) for SKU ${item.sku}`,
         };
       }
     }
