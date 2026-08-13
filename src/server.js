@@ -56,6 +56,33 @@ const bootstrap = async () => {
   });
 };
 
+/**
+ * Handles graceful shutdown signals (SIGTERM / SIGINT).
+ * Closes the HTTP server to finish in-flight requests and closes DB connection cleanly.
+ */
+const mongoose = require('mongoose');
+
+const gracefulShutdown = (signal) => {
+  logger.info(`[Server] Received ${signal}. Initiating graceful shutdown...`);
+  if (server) {
+    server.close(async () => {
+      logger.info('[Server] HTTP server closed cleanly.');
+      try {
+        await mongoose.disconnect();
+        logger.info('[Server] MongoDB connection closed.');
+      } catch (err) {
+        logger.error('[Server] Error during DB disconnect:', { error: err.message });
+      }
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 (async () => {
   try {
     await bootstrap();

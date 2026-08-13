@@ -58,6 +58,13 @@ class DocumentController {
         data: savedDocument,
       });
     } catch (err) {
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (_unlinkErr) {
+          // Ignore unlink cleanup error
+        }
+      }
       next(err);
     }
   };

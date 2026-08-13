@@ -30,9 +30,14 @@ const storage = multer.diskStorage({
 });
 
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg'];
 
 const fileFilter = (req, file, cb) => {
-  if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const isValidMime = ALLOWED_MIME_TYPES.includes(file.mimetype);
+  const isValidExt = ALLOWED_EXTENSIONS.includes(ext);
+
+  if (isValidMime && isValidExt) {
     cb(null, true);
   } else {
     const error = new Error('Only PDF, PNG and JPEG files are supported.');
@@ -56,7 +61,11 @@ const documentController = new DocumentController();
 router.post('/upload', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
-      if (err.code === 'UNSUPPORTED_FILE_TYPE' || err.statusCode === 415) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        err.statusCode = 413;
+        err.code = 'FILE_TOO_LARGE';
+        err.message = 'File size exceeds maximum allowed limit of 10MB.';
+      } else if (err.code === 'UNSUPPORTED_FILE_TYPE' || err.statusCode === 415) {
         err.statusCode = 415;
         err.code = 'UNSUPPORTED_FILE_TYPE';
         err.message = 'Only PDF, PNG and JPEG files are supported.';
