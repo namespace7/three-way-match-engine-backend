@@ -34,6 +34,8 @@ class QuantityRule {
     }
 
     for (const item of lineItems) {
+      if (item.resolved === false) continue; // Skip unresolved items; identity must be resolved before quantity comparison
+
       const ordered = item.orderedQuantity ?? 0;
       const received = item.receivedQuantity ?? 0;
       const invoiced = item.invoicedQuantity ?? 0;

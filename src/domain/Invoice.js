@@ -184,14 +184,19 @@ class Invoice {
 
   /** @returns {Object} */
   toJSON() {
+    const safeISO = (d) => (d instanceof Date && !isNaN(d.getTime()) ? d.toISOString() : null);
     return {
       invoiceNumber: this._invoiceNumber,
       poReference:   this._poReference,
       grnReference:  this._grnReference,
-      issueDate:     this._issueDate?.toISOString()  ?? null,
-      dueDate:       this._dueDate?.toISOString()    ?? null,
+      issueDate:     safeISO(this._issueDate),
+      dueDate:       safeISO(this._dueDate),
       currency:      this._currency,
-      supplier:      this._supplier,
+      supplier:      {
+        ...this._supplier,
+        gstin: this._supplier.gstin || this._supplier.taxId || '',
+        taxId: this._supplier.taxId || this._supplier.gstin || '',
+      },
       lineItems:     this._lineItems.map((i) => i.toJSON()),
       subtotal:      this._subtotal,
       taxAmount:     this._taxAmount,

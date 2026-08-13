@@ -2,12 +2,23 @@
 
 const mongoose = require('mongoose');
 
+// ── Sub-document schemas ──────────────────────────────────────────────────────
+
+const aliasSchema = new mongoose.Schema(
+  {
+    code:        { type: String, required: true, trim: true, uppercase: true },
+    vendorGstin: { type: String, default: null,  trim: true, uppercase: true },
+  },
+  { _id: false }
+);
+
 // ── Root schema ───────────────────────────────────────────────────────────────
 
 const skuSchema = new mongoose.Schema(
   {
     skuCode:             { type: String, required: true, trim: true, uppercase: true },
     eanCode:             { type: String, default: null,  trim: true },
+    aliases:             { type: [aliasSchema], default: [] },
     name:                { type: String, default: '', trim: true },
     description:         { type: String, default: '', trim: true },
     category:            { type: String, default: '', trim: true },
@@ -38,6 +49,12 @@ skuSchema.index(
     name: 'idx_sku_ean_code',
   }
 );
+
+skuSchema.index(
+  { 'aliases.code': 1, 'aliases.vendorGstin': 1 },
+  { name: 'idx_sku_aliases_code_vendor' }
+);
+
 skuSchema.index({ isActive: 1 }, { name: 'idx_sku_is_active' });
 
 // ── Model export ──────────────────────────────────────────────────────────────

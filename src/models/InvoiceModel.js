@@ -21,6 +21,7 @@ const invoiceSupplierSchema = new mongoose.Schema(
     name:        { type: String, required: true, trim: true },
     address:     { type: String, default: '' },
     taxId:       { type: String, default: '', trim: true },
+    gstin:       { type: String, default: '', trim: true },
     bankAccount: { type: String, default: '', trim: true },
   },
   { _id: false }

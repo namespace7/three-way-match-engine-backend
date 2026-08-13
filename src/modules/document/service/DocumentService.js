@@ -66,7 +66,7 @@ class DocumentService {
       throw error;
     }
 
-    const raw = await this._parse(filePath);
+    const raw = await this._parse(filePath, documentType);
     const mapped = this._map(raw, documentType);
 
     const validation = this._validate(mapped, documentType);
@@ -91,6 +91,7 @@ class DocumentService {
 
     if (documentType) {
       const type = documentType.trim().toUpperCase();
+      console.log(`DocumentService: findDocuments called with documentType="${type}" and poNumber="${poNumber || 'N/A'}"`);
       const repo = this._repositories[type];
       if (repo && typeof repo.findMany === 'function') {
         const filter = type === 'PURCHASE_ORDER' ? poFilter : refFilter;
@@ -130,8 +131,8 @@ class DocumentService {
    * Delegates file parsing to the injected parser.
    * @private
    */
-  async _parse(filePath) {
-    return this._parser.parse(filePath);
+  async _parse(filePath, documentType) {
+    return this._parser.parse(filePath, documentType);
   }
 
   /**

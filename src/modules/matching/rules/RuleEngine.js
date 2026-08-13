@@ -1,10 +1,11 @@
 'use strict';
 
 const MissingDocumentRule = require('./MissingDocumentRule');
+const DuplicateRule = require('./DuplicateRule');
+const UnresolvedSKURule = require('./UnresolvedSKURule');
 const QuantityRule = require('./QuantityRule');
 const PriceRule = require('./PriceRule');
 const ToleranceRule = require('./ToleranceRule');
-const DuplicateRule = require('./DuplicateRule');
 
 /**
  * @class RuleEngine
@@ -22,6 +23,7 @@ class RuleEngine {
       : [
           new MissingDocumentRule(),
           new DuplicateRule(),
+          new UnresolvedSKURule(),
           new QuantityRule(),
           new PriceRule(),
           new ToleranceRule(),
