@@ -182,10 +182,11 @@ class GRN {
 
   /** @returns {Object} */
   toJSON() {
+    const safeISO = (d) => (d instanceof Date && !isNaN(d.getTime()) ? d.toISOString() : null);
     return {
       grnNumber:    this._grnNumber,
       poReference:  this._poReference,
-      receivedDate: this._receivedDate?.toISOString() ?? null,
+      receivedDate: safeISO(this._receivedDate),
       warehouse:    this._warehouse,
       receivedBy:   this._receivedBy,
       lineItems:    this._lineItems.map((i) => i.toJSON()),

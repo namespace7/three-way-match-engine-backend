@@ -61,6 +61,50 @@ class SKURepository {
   }
 
   /**
+   * Finds all active/matching SKUs that contain an alias for the given external code
+   * and optional vendorGstin.
+   *
+   * @param {string} code - The external alias code string.
+   * @param {string|null} [vendorGstin=null] - Optional vendor GSTIN string.
+   * @returns {Promise<import('mongoose').Document[]>} Array of matching SKU documents.
+   */
+  async findByAlias(code, vendorGstin = null) {
+    if (!code || typeof code !== 'string') return [];
+    const normalisedCode = code.trim().toUpperCase();
+    if (!normalisedCode) return [];
+
+    const normalisedGstin = typeof vendorGstin === 'string' && vendorGstin.trim().length > 0
+      ? vendorGstin.trim().toUpperCase()
+      : null;
+
+    if (normalisedGstin) {
+      // Query vendor-specific alias first
+      const vendorMatches = await SKUModel.find({
+        aliases: {
+          $elemMatch: {
+            code: normalisedCode,
+            vendorGstin: normalisedGstin,
+          },
+        },
+      }).lean();
+
+      if (vendorMatches.length > 0) {
+        return vendorMatches;
+      }
+    }
+
+    // Fall back to global alias lookup (vendorGstin is null)
+    return SKUModel.find({
+      aliases: {
+        $elemMatch: {
+          code: normalisedCode,
+          vendorGstin: null,
+        },
+      },
+    }).lean();
+  }
+
+  /**
    * Finds a single SKU by its MongoDB `_id`.
    * @param {string} id - MongoDB ObjectId string.
    * @returns {Promise<import('mongoose').Document|null>}

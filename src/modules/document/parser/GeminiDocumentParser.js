@@ -32,7 +32,7 @@ class GeminiDocumentParser extends DocumentParser {
    * @param {string} filePath - Path to PDF or image file.
    * @returns {Promise<Record<string, unknown>>} Extracted JSON object.
    */
-  async parse(filePath) {
+  async parse(filePath, documentType = 'PURCHASE_ORDER') {
     if (!this._apiKey) {
       throw new Error('[GeminiParser Error] GEMINI_API_KEY is not configured.');
     }
@@ -49,10 +49,7 @@ class GeminiDocumentParser extends DocumentParser {
     const fileBuffer = fs.readFileSync(filePath);
     const base64Data = fileBuffer.toString('base64');
 
-    const promptText = `
-You are an expert document extraction system.
-Extract all data from this document into structured JSON.
-`;
+    const promptText = this._buildPrompt(documentType);
 
     try {
       const response = await this._httpClient.post(
@@ -77,7 +74,7 @@ Extract all data from this document into structured JSON.
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 30000,
+          timeout: 120000,
         }
       );
 
@@ -87,6 +84,7 @@ Extract all data from this document into structured JSON.
       if (error.code === 'PARSER_JSON_ERROR') {
         throw error;
       }
+      console.log(`[GeminiParser Error] API call failed: ${error.message}`);
       const status = error.response?.status;
       const apiMessage = error.response?.data?.error?.message || error.message;
       throw new Error(`[GeminiParser Error] API call failed${status ? ` (${status})` : ''}: ${apiMessage}`);
@@ -116,8 +114,10 @@ Extract all data from this document into structured JSON.
   _extractResponseText(response) {
     if (typeof response === 'string') return response;
     if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log('[GeminiParser] Extracted text from Gemini API response:', response.data.candidates[0].content.parts[0].text);
       return response.data.candidates[0].content.parts[0].text;
     }
+    console.log('[GeminiParser] Unexpected API response structure:', JSON.stringify(response, null, 2));
     if (response?.text) return response.text;
     if (typeof response?.data === 'object') {
       return JSON.stringify(response.data);
@@ -136,12 +136,86 @@ Extract all data from this document into structured JSON.
         .replace(/^```\s*/i, '')
         .replace(/\s*```$/i, '')
         .trim();
+        console.log('[GeminiParser] Cleaned text for JSON parsing:', cleaned);
       return JSON.parse(cleaned);
     } catch (err) {
       const parseError = new Error(`[GeminiParser Error] Failed to parse API output as JSON: ${err.message}`);
       parseError.code = 'PARSER_JSON_ERROR';
       throw parseError;
     }
+  }
+
+  /**
+   * Builds a document-type-specific extraction prompt with exact JSON schema.
+   * Using a strict schema prevents Gemini from inventing different key names
+   * on each call and ensures the DocumentMapper can reliably read the output.
+   * @private
+   */
+  _buildPrompt(documentType) {
+    const preamble = [
+      'You are an expert document data extraction system for Indian procurement documents.',
+      '',
+      'Extract ALL data from the document and return ONLY a single valid JSON object.',
+      '',
+      'STRICT RULES:',
+      '1. Use EXACTLY the key names shown in the schema below. Do not rename or add keys.',
+      '2. Every line item MUST be a separate object in the line_items array with its own closing brace.',
+      '3. Do not merge multiple line items into a single object.',
+      '4. Return only valid JSON. No markdown, no code fences, no explanations.',
+      '5. Use null for missing fields, 0 for missing numeric fields.',
+      '',
+      'Use EXACTLY this JSON schema:',
+      '',
+    ].join('\n');
+
+    if (documentType === 'GRN') {
+      return preamble + JSON.stringify({
+        grn: { grn_number: '', po_reference: '', received_date: '', warehouse: '', received_by: '' },
+        vendor_details: { name: '', address: '', gstin: '' },
+        line_items: [{
+          s_no: 1, item_code: '', item_description: '', hsn_code: '',
+          ordered_quantity: 0, received_quantity: 0, rejected_quantity: 0,
+          rejection_reason: null, unit_price: 0, total_inr: 0,
+        }],
+        summary_totals: { total_received_qty: 0, total_rejected_qty: 0, grand_total_inr: 0 },
+      }, null, 2);
+    }
+
+    if (documentType === 'INVOICE') {
+      return preamble + JSON.stringify({
+        invoice: {
+          invoice_number: '', po_number: '', grn_number: null,
+          invoice_date: '', due_date: null, payment_terms: '',
+        },
+        vendor_details: { name: '', address: '', gstin: '', pan: '', contact: '' },
+        billing_address: { company_name: '', address: '', gstin: '' },
+        line_items: [{
+          s_no: 1, item_code: '', item_description: '', hsn_code: '',
+          qty: 0, unit_base_cost_inr: 0, taxable_value_inr: 0,
+          cgst_rate: 0, cgst_amt_inr: 0, sgst_ugst_rate: 0, sgst_ugst_amt_inr: 0,
+          igst_rate: 0, igst_amt_inr: 0, total_inr: 0,
+        }],
+        summary_totals: { total_amount_inr: 0, total_tax_inr: 0, grand_total_inr: 0 },
+      }, null, 2);
+    }
+
+    // Default: PURCHASE_ORDER
+    return preamble + JSON.stringify({
+      purchase_order: {
+        po_no: '', po_date: '', payment_terms: '',
+        expected_delivery_date: '', po_expiry_date: '', reference_po_code: null,
+      },
+      vendor_details: { name: '', address: '', gstin: '', pan: '', contact: '' },
+      billing_address: { company_name: '', address: '', email: '', contact: '', gstin: '' },
+      shipping_address: { company_name: '', address: '', email: '', contact: '', gstin: '' },
+      line_items: [{
+        s_no: 1, item_code: '', item_description: '', hsn_code: '',
+        qty: 0, mrp: 0, unit_base_cost_inr: 0, taxable_value_inr: 0,
+        cgst_rate: 0, cgst_amt_inr: 0, sgst_ugst_rate: 0, sgst_ugst_amt_inr: 0,
+        igst_rate: 0, igst_amt_inr: 0, total_inr: 0,
+      }],
+      summary_totals: { total_amount_inr: 0, total_tax_inr: 0, grand_total_inr: 0 },
+    }, null, 2);
   }
 }
 

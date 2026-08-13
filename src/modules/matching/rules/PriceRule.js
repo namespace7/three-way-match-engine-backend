@@ -29,6 +29,8 @@ class PriceRule {
     const failures = [];
 
     for (const item of lineItems) {
+      if (item.resolved === false) continue; // Skip unresolved items; identity must be resolved before price comparison
+
       const expectedPrice = item.orderedPrice ?? 0;
       const invoicePrice = item.invoicePrice ?? 0;
 

@@ -37,6 +37,8 @@ class ToleranceRule {
     const failures = [];
 
     for (const item of lineItems) {
+      if (item.resolved === false) continue; // Skip unresolved items; identity must be resolved before tolerance comparison
+
       const orderedPrice = item.orderedPrice ?? 0;
       const invoicePrice = item.invoicePrice ?? 0;
 

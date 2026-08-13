@@ -32,19 +32,67 @@ class LineItemAggregator {
    *   invoicePrice: number
    * }>>} Array of aggregated SKU entries.
    */
+  /**
+   * Aggregates line items from the provided document context grouped by canonical SKU.
+   *
+   * @param {Object} [context={}]
+   * @param {Object} [context.purchaseOrder]
+   * @param {Array} [context.grns]
+   * @param {Array} [context.invoices]
+   * @returns {Promise<Array<{
+   *   sku: string,
+   *   canonicalSku: string|null,
+   *   externalCode: string,
+   *   resolutionStatus: string,
+   *   resolved: boolean,
+   *   orderedQuantity: number,
+   *   receivedQuantity: number,
+   *   invoicedQuantity: number,
+   *   orderedPrice: number,
+   *   invoicePrice: number
+   * }>>} Array of aggregated SKU entries.
+   */
   async aggregate(context = {}) {
     const { purchaseOrder, grns = [], invoices = [] } = context;
     const skuMap = new Map();
 
-    /**
-     * Gets or initializes an aggregation record for a given canonical SKU.
-     * @param {string} canonicalSku
-     */
-    const getOrCreateEntry = (canonicalSku) => {
-      const normalisedSku = canonicalSku.trim().toUpperCase();
-      if (!skuMap.has(normalisedSku)) {
-        skuMap.set(normalisedSku, {
-          sku: normalisedSku,
+    const vendorGstin = purchaseOrder?.supplier?.gstin
+                     || purchaseOrder?.supplier?.taxId
+                     || invoices?.[0]?.supplier?.gstin
+                     || invoices?.[0]?.supplier?.taxId
+                     || null;
+
+    const processItem = async (item, docType, applyQty = {}, applyPrice = {}) => {
+      if (!item) return;
+      const rawIdentifier = item.sku || item.poSku || item.invoiceSku || item.ean || item.barcode;
+      if (!rawIdentifier) return;
+
+      const resolution = await this._skuResolver.resolve(item, { vendorGstin });
+
+      // Handle raw string return (for backward compatibility with simple test mocks)
+      const resObj = typeof resolution === 'string'
+        ? { status: 'RESOLVED', canonicalSku: resolution, externalCode: resolution, source: 'CANONICAL', resolved: true }
+        : resolution;
+
+      const isResolved = resObj.resolved === true && Boolean(resObj.canonicalSku);
+
+      let key;
+      if (isResolved) {
+        key = resObj.canonicalSku.trim().toUpperCase();
+      } else {
+        const extCode = (resObj.externalCode || rawIdentifier).trim().toUpperCase();
+        key = `UNRESOLVED:${resObj.status || 'UNRESOLVED'}:${docType}:${extCode}:${item.lineNumber || Math.random().toString(36).substring(7)}`;
+      }
+
+      if (!skuMap.has(key)) {
+        skuMap.set(key, {
+          sku: isResolved ? key : (resObj.externalCode || rawIdentifier).trim().toUpperCase(),
+          canonicalSku: isResolved ? key : null,
+          externalCode: (resObj.externalCode || rawIdentifier).trim().toUpperCase(),
+          resolutionStatus: resObj.status || (isResolved ? 'RESOLVED' : 'UNRESOLVED'),
+          resolved: isResolved,
+          source: resObj.source || 'FALLBACK',
+          description: item.description || '',
           orderedQuantity: 0,
           receivedQuantity: 0,
           rejectedQuantity: 0,
@@ -54,7 +102,23 @@ class LineItemAggregator {
           invoicePrice: 0,
         });
       }
-      return skuMap.get(normalisedSku);
+
+      const entry = skuMap.get(key);
+
+      if (applyQty.ordered) entry.orderedQuantity += item.quantity || 0;
+      if (applyQty.received) entry.receivedQuantity += item.receivedQuantity || 0;
+      if (applyQty.rejected) {
+        entry.rejectedQuantity = (entry.rejectedQuantity || 0) + (item.rejectedQuantity || 0);
+        if (item.rejectionReason) entry.rejectionReason = item.rejectionReason;
+      }
+      if (applyQty.invoiced) entry.invoicedQuantity += item.quantity || 0;
+
+      if (applyPrice.ordered) entry.orderedPrice = item.unitPrice || 0;
+      if (applyPrice.invoiced) entry.invoicePrice = item.unitPrice || 0;
+
+      if (item.description && !entry.description) {
+        entry.description = item.description;
+      }
     };
 
     // 1. Accumulate Purchase Order line items
@@ -64,18 +128,7 @@ class LineItemAggregator {
         : purchaseOrder.lineItems || [];
 
       for (const item of poItems) {
-        if (item) {
-          const rawIdentifier = item.sku || item.poSku || item.ean || item.barcode;
-          if (rawIdentifier) {
-            const canonicalSku = await this._skuResolver.resolve(item);
-            const entry = getOrCreateEntry(canonicalSku);
-            entry.orderedQuantity += item.quantity || 0;
-            entry.orderedPrice = item.unitPrice || 0;
-            if (item.description && !entry.description) {
-              entry.description = item.description;
-            }
-          }
-        }
+        await processItem(item, 'PO', { ordered: true }, { ordered: true });
       }
     }
 
@@ -87,21 +140,7 @@ class LineItemAggregator {
           : grn?.lineItems || [];
 
         for (const item of grnItems) {
-          if (item) {
-            const rawIdentifier = item.sku || item.ean || item.barcode;
-            if (rawIdentifier) {
-              const canonicalSku = await this._skuResolver.resolve(item);
-              const entry = getOrCreateEntry(canonicalSku);
-              entry.receivedQuantity += item.receivedQuantity || 0;
-              entry.rejectedQuantity = (entry.rejectedQuantity || 0) + (item.rejectedQuantity || 0);
-              if (item.rejectionReason) {
-                entry.rejectionReason = item.rejectionReason;
-              }
-              if (item.description && !entry.description) {
-                entry.description = item.description;
-              }
-            }
-          }
+          await processItem(item, 'GRN', { received: true, rejected: true }, {});
         }
       }
     }
@@ -114,25 +153,14 @@ class LineItemAggregator {
           : invoice?.lineItems || [];
 
         for (const item of invoiceItems) {
-          if (item) {
-            const rawIdentifier = item.sku || item.invoiceSku || item.ean || item.barcode;
-            if (rawIdentifier) {
-              const canonicalSku = await this._skuResolver.resolve(item);
-              const entry = getOrCreateEntry(canonicalSku);
-              entry.invoicedQuantity += item.quantity || 0;
-              entry.invoicePrice = item.unitPrice || 0;
-              if (item.description && !entry.description) {
-                entry.description = item.description;
-              }
-            }
-          }
+          await processItem(item, 'INVOICE', { invoiced: true }, { invoiced: true });
         }
       }
     }
 
     // 4. Fallback: resolve missing product description from SKU Master catalogue
     for (const entry of skuMap.values()) {
-      if (!entry.description && this._skuResolver?._skuRepository?.findBySkuCode) {
+      if (entry.resolved && !entry.description && this._skuResolver?._skuRepository?.findBySkuCode) {
         try {
           const masterSku = await this._skuResolver._skuRepository.findBySkuCode(entry.sku);
           if (masterSku) {

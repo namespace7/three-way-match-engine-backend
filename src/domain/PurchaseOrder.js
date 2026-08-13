@@ -172,12 +172,17 @@ class PurchaseOrder {
 
   /** @returns {Object} Plain-object snapshot safe for serialisation. */
   toJSON() {
+    const safeISO = (d) => (d instanceof Date && !isNaN(d.getTime()) ? d.toISOString() : null);
     return {
       poNumber:     this._poNumber,
-      issueDate:    this._issueDate?.toISOString() ?? null,
+      issueDate:    safeISO(this._issueDate),
       currency:     this._currency,
       buyer:        this._buyer,
-      supplier:     this._supplier,
+      supplier:     {
+        ...this._supplier,
+        gstin: this._supplier.gstin || this._supplier.taxId || '',
+        taxId: this._supplier.taxId || this._supplier.gstin || '',
+      },
       lineItems:    this._lineItems.map((i) => i.toJSON()),
       totalAmount:  this._totalAmount,
       paymentTerms: this._paymentTerms,

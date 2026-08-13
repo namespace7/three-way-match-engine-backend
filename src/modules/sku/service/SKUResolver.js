@@ -18,84 +18,144 @@ class SKUResolver {
   }
 
   /**
-   * Resolves a SKU identifier or candidate object to its canonical SKU code.
+   * Resolves a SKU identifier or candidate object to its canonical SKU code representation.
    *
    * Priority:
    *  1. Direct SKU Code lookup in SKURepository (findBySkuCode)
-   *  2. EAN/Barcode lookup in SKURepository (findByEanCode)
-   *  3. Fallback: returns original input SKU string if no mapping exists.
+   *  2. Vendor-specific or global alias lookup in SKURepository (findByAlias)
+   *  3. EAN/Barcode lookup in SKURepository (findByEanCode)
+   *  4. Fallback: returns UNRESOLVED structured result.
    *
-   * @param {string|{ sku?: string, poSku?: string, invoiceSku?: string, ean?: string, barcode?: string }} input
-   * @returns {Promise<string>} Canonical SKU code.
+   * @param {string|{ sku?: string, poSku?: string, invoiceSku?: string, ean?: string, barcode?: string, vendorGstin?: string }} input
+   * @param {Object} [options={}]
+   * @param {string|null} [options.vendorGstin]
+   * @returns {Promise<{
+   *   status: 'RESOLVED'|'UNRESOLVED'|'AMBIGUOUS',
+   *   canonicalSku: string|null,
+   *   externalCode: string,
+   *   source: 'CANONICAL'|'ALIAS'|'EAN'|'FALLBACK',
+   *   resolved: boolean
+   * }>} Structured resolution result.
    */
-  async resolve(input) {
-    if (!input) return '';
+  async resolve(input, options = {}) {
+    const defaultUnresolved = (code = '') => ({
+      status: 'UNRESOLVED',
+      canonicalSku: null,
+      externalCode: code,
+      source: 'FALLBACK',
+      resolved: false,
+    });
+
+    if (!input) return defaultUnresolved('');
+
+    // Determine vendor GSTIN context from options or input object
+    const vendorGstin = options?.vendorGstin || (typeof input === 'object' ? input.vendorGstin : null) || null;
+
+    // Determine candidates array and fallback code
+    let candidates = [];
+    let fallbackCode = '';
+
+    if (typeof input === 'string') {
+      const raw = input.trim().toUpperCase();
+      if (!raw) return defaultUnresolved('');
+      candidates = [raw];
+      fallbackCode = raw;
+    } else if (typeof input === 'object') {
+      candidates = [
+        input.sku,
+        input.poSku,
+        input.invoiceSku,
+        input.ean,
+        input.barcode,
+      ].filter((val) => typeof val === 'string' && val.trim().length > 0)
+       .map((val) => val.trim().toUpperCase());
+
+      if (candidates.length === 0) {
+        return defaultUnresolved('');
+      }
+      fallbackCode = candidates[0];
+    }
 
     // Determine whether repo query should be attempted (custom mock repo OR active DB connection)
-    const isCustomRepo = Boolean(this._skuRepository && this._skuRepository.constructor && this._skuRepository.constructor.name !== 'SKURepository');
+    const isCustomRepo = Boolean(
+      this._skuRepository &&
+      this._skuRepository.constructor &&
+      this._skuRepository.constructor.name !== 'SKURepository'
+    );
     const isDbConnected = Boolean(mongoose.connection && mongoose.connection.readyState === 1);
     const shouldQueryRepo = isCustomRepo || isDbConnected;
 
-    // Handle plain string input
-    if (typeof input === 'string') {
-      const raw = input.trim().toUpperCase();
-      if (!raw) return '';
-
-      if (shouldQueryRepo) {
-        try {
-          const byCode = await this._skuRepository.findBySkuCode(raw);
-          if (byCode && byCode.skuCode) {
-            return byCode.skuCode;
-          }
-
-          const byEan = await this._skuRepository.findByEanCode(raw);
-          if (byEan && byEan.skuCode) {
-            return byEan.skuCode;
-          }
-        } catch (_err) {
-          // Fallback silently if DB query fails
-        }
-      }
-
-      return raw;
+    if (!shouldQueryRepo) {
+      return {
+        status: 'RESOLVED',
+        canonicalSku: fallbackCode,
+        externalCode: fallbackCode,
+        source: 'CANONICAL',
+        resolved: true,
+      };
     }
 
-    // Handle candidate object input
-    const candidates = [
-      input.sku,
-      input.poSku,
-      input.invoiceSku,
-      input.ean,
-      input.barcode,
-    ].filter((val) => typeof val === 'string' && val.trim().length > 0);
-
-    if (candidates.length === 0) {
-      return '';
-    }
-
-    const fallbackSku = candidates[0].trim().toUpperCase();
-
-    if (shouldQueryRepo) {
-      try {
-        for (const candidate of candidates) {
-          const normalised = candidate.trim().toUpperCase();
-
-          const byCode = await this._skuRepository.findBySkuCode(normalised);
+    try {
+      for (const candidate of candidates) {
+        // 1. Direct SKU Code lookup
+        if (typeof this._skuRepository.findBySkuCode === 'function') {
+          const byCode = await this._skuRepository.findBySkuCode(candidate);
           if (byCode && byCode.skuCode) {
-            return byCode.skuCode;
-          }
-
-          const byEan = await this._skuRepository.findByEanCode(normalised);
-          if (byEan && byEan.skuCode) {
-            return byEan.skuCode;
+            return {
+              status: 'RESOLVED',
+              canonicalSku: byCode.skuCode,
+              externalCode: candidate,
+              source: 'CANONICAL',
+              resolved: true,
+            };
           }
         }
-      } catch (_err) {
-        // Fallback silently if DB query fails
+
+        // 2. Vendor-specific or global alias lookup
+        if (typeof this._skuRepository.findByAlias === 'function') {
+          const aliasMatches = await this._skuRepository.findByAlias(candidate, vendorGstin);
+          if (Array.isArray(aliasMatches) && aliasMatches.length > 0) {
+            const uniqueSkus = [...new Set(aliasMatches.map((m) => m.skuCode).filter(Boolean))];
+            if (uniqueSkus.length === 1) {
+              return {
+                status: 'RESOLVED',
+                canonicalSku: uniqueSkus[0],
+                externalCode: candidate,
+                source: 'ALIAS',
+                resolved: true,
+              };
+            }
+            if (uniqueSkus.length > 1) {
+              return {
+                status: 'AMBIGUOUS',
+                canonicalSku: null,
+                externalCode: candidate,
+                source: 'ALIAS',
+                resolved: false,
+              };
+            }
+          }
+        }
+
+        // 3. EAN Barcode lookup
+        if (typeof this._skuRepository.findByEanCode === 'function') {
+          const byEan = await this._skuRepository.findByEanCode(candidate);
+          if (byEan && byEan.skuCode) {
+            return {
+              status: 'RESOLVED',
+              canonicalSku: byEan.skuCode,
+              externalCode: candidate,
+              source: 'EAN',
+              resolved: true,
+            };
+          }
+        }
       }
+    } catch (_err) {
+      // Fallback gracefully on query error
     }
 
-    return fallbackSku;
+    return defaultUnresolved(fallbackCode);
   }
 }
 
