@@ -4,6 +4,8 @@ const cors = require('cors');
 const morgan = require('morgan');
 require('express-async-errors');
 
+const cookieParser = require('cookie-parser');
+
 const env = require('./config/env');
 const logger = require('./shared/logger');
 const authMiddleware = require('./middlewares/auth');
@@ -22,8 +24,19 @@ app.disable('x-powered-by');
 app.use(helmet());
 
 // Enable Cross-Origin Resource Sharing
+const configuredOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()) : '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like curl, postman)
+    if (!origin) return callback(null, true);
+    if (configuredOrigins.includes(origin) || !env.isProduction) {
+      return callback(null, true); // Dynamically reflects origin (e.g. http://localhost:3000)
+    }
+    return callback(new Error('CORS origin not allowed'));
+  },
   credentials: true,
 };
 app.use(cors(corsOptions));
@@ -35,7 +48,8 @@ app.use(
   })
 );
 
-// Request body parsers
+// Cookie & Request body parsers
+app.use(cookieParser());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
