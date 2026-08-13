@@ -2,13 +2,14 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-require('express-async-errors');
-
 const cookieParser = require('cookie-parser');
+const mongoose = require('mongoose');
+require('express-async-errors');
 
 const env = require('./config/env');
 const logger = require('./shared/logger');
 const authMiddleware = require('./middlewares/auth');
+const { authLimiter, uploadLimiter, apiLimiter } = require('./middlewares/rateLimiter');
 const authRoutes = require('./modules/auth/routes/AuthRoutes');
 const documentRoutes = require('./modules/document/routes/DocumentRoutes');
 const matchingRoutes = require('./modules/matching/routes/MatchingRoutes');
@@ -23,14 +24,14 @@ app.disable('x-powered-by');
 // Security HTTP headers
 app.use(helmet());
 
-// Enable Cross-Origin Resource Sharing
+// Enable Cross-Origin Resource Sharing with credentialed origin reflection
 const configuredOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
   : ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like curl, postman)
+    // Allow non-browser requests with no origin (e.g. curl, postman)
     if (!origin) return callback(null, true);
     if (configuredOrigins.includes(origin) || !env.isProduction) {
       return callback(null, true); // Dynamically reflects origin (e.g. http://localhost:3000)
@@ -56,9 +57,6 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 // ---------------------------------------------------------------------------
 // Public / Unprotected Routes & Health Probes
 // ---------------------------------------------------------------------------
-
-const { authLimiter, uploadLimiter, apiLimiter } = require('./middlewares/rateLimiter');
-const mongoose = require('mongoose');
 
 /** GET / — production landing info endpoint */
 app.get('/', (_req, res) => {
@@ -106,7 +104,7 @@ app.use('/auth', authLimiter, authRoutes);
 app.use('/api/v1/auth', authLimiter, authRoutes);
 
 // ---------------------------------------------------------------------------
-// Protected API Routes (Requires Bearer token & rate limiting)
+// Protected API Routes (Requires HttpOnly Cookie or Bearer token & rate limiting)
 // ---------------------------------------------------------------------------
 
 app.use('/api/v1', apiLimiter, authMiddleware);

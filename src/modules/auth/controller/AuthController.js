@@ -7,7 +7,7 @@ const env = require('../../../config/env');
 /**
  * @class AuthController
  *
- * Handles HTTP authentication requests using server-set HttpOnly cookies.
+ * Canonical AuthController handling HTTP authentication via server-set HttpOnly cookies.
  */
 class AuthController {
   login = async (req, res, next) => {
@@ -54,7 +54,7 @@ class AuthController {
       };
 
       res.cookie('access_token', token, cookieOptions);
-      // Clear stale legacy auth_token cookie if present on existing browsers
+      // Clear legacy auth_token cookie if present on existing browsers
       res.clearCookie('auth_token', { path: '/', httpOnly: true, sameSite: 'lax' });
 
       return res.status(200).json({

@@ -6,7 +6,7 @@ const app = require('../../src/app');
 const env = require('../../src/config/env');
 
 async function runHttpOnlyCookieAuthSuite() {
-  console.log('=== Phase 9.2 HttpOnly Cookie Authentication Integration Test Suite ===\n');
+  console.log('=== Phase 9.2.4 HttpOnly Cookie Authentication Integration Test Suite ===\n');
 
   const mongoUri = env.MONGODB_URI || 'mongodb://localhost:27017/three-way-match-engine';
   if (mongoose.connection.readyState === 0) {
@@ -21,6 +21,7 @@ async function runHttpOnlyCookieAuthSuite() {
   console.log('1. Login Endpoint (POST /api/v1/auth/login):');
   const loginRes = await request(app)
     .post('/api/v1/auth/login')
+    .set('Origin', 'http://localhost:3000')
     .send({ username: 'admin', password: 'admin' });
 
   console.assert(loginRes.status === 200, 'Test 1 Failed: Status should be 200');
@@ -34,7 +35,10 @@ async function runHttpOnlyCookieAuthSuite() {
   console.assert(Boolean(accessTokenCookie), 'Test 1 Failed: access_token cookie missing');
   console.assert(accessTokenCookie.includes('HttpOnly'), 'Test 1 Failed: cookie must have HttpOnly flag');
   console.assert(accessTokenCookie.includes('SameSite=Lax'), 'Test 1 Failed: cookie must have SameSite=Lax flag');
-  console.log('   Status: 200 | Set-Cookie: HttpOnly; SameSite=Lax | JWT Omitted from JSON: YES | PASSED\n');
+
+  const authOriginHeader = loginRes.headers['access-control-allow-origin'];
+  console.assert(authOriginHeader === 'http://localhost:3000', 'Test 1 Failed: CORS origin should reflect http://localhost:3000');
+  console.log('   Status: 200 | Set-Cookie: HttpOnly; SameSite=Lax | CORS Origin: http://localhost:3000 | PASSED\n');
 
   // Extract cookie for authenticated requests
   const cookieHeader = cookies.map((c) => c.split(';')[0]).join('; ');
