@@ -1,12 +1,13 @@
 'use strict';
 
+const jwt = require('jsonwebtoken');
 const { STATIC_TOKEN } = require('../../../middlewares/auth');
 const env = require('../../../config/env');
 
 /**
  * @class AuthController
  *
- * Handles HTTP authentication requests.
+ * Canonical AuthController handling HTTP authentication via server-set HttpOnly cookies.
  */
 class AuthController {
   login = async (req, res, next) => {
@@ -37,16 +38,85 @@ class AuthController {
         throw error;
       }
 
+      const token = jwt.sign(
+        { username: expectedUsername, role: 'admin' },
+        env.JWT_SECRET || 'dev-secret-key-3way-match',
+        { expiresIn: '24h' }
+      );
+
+      const isProd = process.env.NODE_ENV === 'production' || env.isProduction;
+      const cookieOptions = {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      };
+
+      res.cookie('access_token', token, cookieOptions);
+      // Clear legacy auth_token cookie if present on existing browsers
+      res.clearCookie('auth_token', { path: '/', httpOnly: true, sameSite: 'lax' });
+
       return res.status(200).json({
         success: true,
         data: {
-          token: STATIC_TOKEN,
-          type: 'Bearer',
+          user: { username: expectedUsername, role: 'admin' },
           message: 'Authentication successful',
         },
       });
     } catch (err) {
       next(err);
+    }
+  };
+
+  logout = async (req, res, next) => {
+    try {
+      const cookieOptions = {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      };
+
+      res.clearCookie('access_token', cookieOptions);
+      res.clearCookie('auth_token', cookieOptions);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Logged out successfully',
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getMe = async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token =
+        req.cookies?.access_token ||
+        (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+
+      if (!token) {
+        const error = new Error('Authentication required.');
+        error.statusCode = 401;
+        error.code = 'UNAUTHORIZED';
+        throw error;
+      }
+
+      let user = { username: 'admin', role: 'admin' };
+      if (token !== STATIC_TOKEN) {
+        user = jwt.verify(token, env.JWT_SECRET || 'dev-secret-key-3way-match');
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: { user },
+      });
+    } catch (err) {
+      const error = new Error('Invalid or expired authentication session.');
+      error.statusCode = 401;
+      error.code = 'UNAUTHORIZED';
+      next(error);
     }
   };
 }

@@ -2,11 +2,14 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
+const mongoose = require('mongoose');
 require('express-async-errors');
 
 const env = require('./config/env');
 const logger = require('./shared/logger');
 const authMiddleware = require('./middlewares/auth');
+const { authLimiter, uploadLimiter, apiLimiter } = require('./middlewares/rateLimiter');
 const authRoutes = require('./modules/auth/routes/AuthRoutes');
 const documentRoutes = require('./modules/document/routes/DocumentRoutes');
 const matchingRoutes = require('./modules/matching/routes/MatchingRoutes');
@@ -21,8 +24,23 @@ app.disable('x-powered-by');
 // Security HTTP headers
 app.use(helmet());
 
-// Enable Cross-Origin Resource Sharing
-app.use(cors());
+// Enable Cross-Origin Resource Sharing with credentialed origin reflection
+const configuredOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests with no origin (e.g. curl, postman)
+    if (!origin) return callback(null, true);
+    if (configuredOrigins.includes(origin) || !env.isProduction) {
+      return callback(null, true); // Dynamically reflects origin (e.g. http://localhost:3000)
+    }
+    return callback(new Error('CORS origin not allowed'));
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // HTTP request logger — 'combined' in production, 'dev' otherwise
 app.use(
@@ -31,12 +49,13 @@ app.use(
   })
 );
 
-// Request body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Cookie & Request body parsers
+app.use(cookieParser());
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // ---------------------------------------------------------------------------
-// Public / Unprotected Routes
+// Public / Unprotected Routes & Health Probes
 // ---------------------------------------------------------------------------
 
 /** GET / — production landing info endpoint */
@@ -50,6 +69,7 @@ app.get('/', (_req, res) => {
     timestamp: new Date().toISOString(),
     documentation: '/api/v1',
     health: '/health',
+    ready: '/ready',
   });
 });
 
@@ -62,18 +82,35 @@ app.get(['/health', '/api/v1/health'], (_req, res) => {
   });
 });
 
-/** Auth routes (unprotected login) */
-app.use('/auth', authRoutes);
-app.use('/api/v1/auth', authRoutes);
+/** GET /ready & /api/v1/ready — readiness probe checking DB connectivity */
+app.get(['/ready', '/api/v1/ready'], (_req, res) => {
+  const isDbReady = mongoose.connection.readyState === 1;
+  if (isDbReady) {
+    return res.status(200).json({
+      status: 'ready',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return res.status(503).json({
+    status: 'not_ready',
+    database: 'disconnected',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/** Auth routes (unprotected login with rate limiting) */
+app.use('/auth', authLimiter, authRoutes);
+app.use('/api/v1/auth', authLimiter, authRoutes);
 
 // ---------------------------------------------------------------------------
-// Protected API Routes (Requires Bearer token)
+// Protected API Routes (Requires HttpOnly Cookie or Bearer token & rate limiting)
 // ---------------------------------------------------------------------------
 
-app.use('/api/v1', authMiddleware);
+app.use('/api/v1', apiLimiter, authMiddleware);
 
 /** Document management routes */
-app.use('/api/v1/documents', documentRoutes);
+app.use('/api/v1/documents', uploadLimiter, documentRoutes);
 
 /** Three-way matching routes */
 app.use('/api/v1/match', matchingRoutes);

@@ -7,23 +7,29 @@ const STATIC_TOKEN = 'static-bearer-token-3way-match-engine';
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    const error = new Error('Authentication required. Missing or malformed Bearer token.');
+  const cookieToken = req.cookies?.access_token;
+  const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  const token = cookieToken || headerToken;
+
+  if (!token) {
+    const error = new Error('Authentication required. Missing or malformed access token.');
     error.statusCode = 401;
     error.code = 'UNAUTHORIZED';
     return next(error);
   }
 
-  const token = authHeader.split(' ')[1];
   if (token !== STATIC_TOKEN) {
     try {
-      jwt.verify(token, env.JWT_SECRET);
+      const decoded = jwt.verify(token, env.JWT_SECRET || 'dev-secret-key-3way-match');
+      req.user = decoded;
     } catch (_err) {
-      const error = new Error('Invalid or expired authentication token.');
+      const error = new Error('Invalid or expired authentication session.');
       error.statusCode = 401;
       error.code = 'UNAUTHORIZED';
       return next(error);
     }
+  } else {
+    req.user = { id: 'admin-static', username: 'admin', role: 'admin' };
   }
 
   next();
